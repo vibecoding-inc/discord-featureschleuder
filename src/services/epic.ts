@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FreeGame } from '../types';
+import { logger } from '../utils/logger';
 
 const EPIC_API_URL = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions';
 
@@ -48,7 +49,7 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
 
     return games;
   } catch (error) {
-    console.error('Error fetching Epic Games:', error);
+    logger.error('Error fetching Epic Games:', error);
     return [];
   }
 }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FreeGame } from '../types';
+import { logger } from '../utils/logger';
 
 // Steam's featured games endpoint
 const STEAM_API_URL = 'https://store.steampowered.com/api/featured';
@@ -31,7 +32,7 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
 
     return games;
   } catch (error) {
-    console.error('Error fetching Steam games:', error);
+    logger.error('Error fetching Steam games:', error);
     return [];
   }
 }

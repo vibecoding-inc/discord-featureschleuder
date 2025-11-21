@@ -4,6 +4,7 @@ import { fetchSteamGames } from './steam';
 import { fetchGoGGames } from './gog';
 import { fetchAmazonPrimeGames } from './amazon';
 import { configManager } from '../utils/config';
+import { logger } from '../utils/logger';
 
 export interface GameFetchResult {
   games: FreeGame[];
@@ -23,7 +24,7 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
         configManager.updateLastChecked(guildId, 'epic');
       }
     } catch (error) {
-      console.error('Error checking Epic Games:', error);
+      logger.error('Error checking Epic Games:', error);
     }
   }
 
@@ -36,7 +37,7 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
         configManager.updateLastChecked(guildId, 'steam');
       }
     } catch (error) {
-      console.error('Error checking Steam:', error);
+      logger.error('Error checking Steam:', error);
     }
   }
 
@@ -49,7 +50,7 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
         configManager.updateLastChecked(guildId, 'gog');
       }
     } catch (error) {
-      console.error('Error checking GoG:', error);
+      logger.error('Error checking GoG:', error);
     }
   }
 
@@ -62,7 +63,7 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
         configManager.updateLastChecked(guildId, 'amazonPrime');
       }
     } catch (error) {
-      console.error('Error checking Amazon Prime Gaming:', error);
+      logger.error('Error checking Amazon Prime Gaming:', error);
     }
   }
 

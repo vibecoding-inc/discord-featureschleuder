@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { GuildConfigs, BotConfig } from '../types';
+import { logger } from './logger';
 
 const CONFIG_DIR = path.join(__dirname, '../../data');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -23,7 +24,7 @@ export class ConfigManager {
         this.configs = JSON.parse(data);
       }
     } catch (error) {
-      console.error('Error loading configs:', error);
+      logger.error('Error loading configs:', error);
       this.configs = {};
     }
   }
@@ -35,7 +36,7 @@ export class ConfigManager {
       }
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(this.configs, null, 2));
     } catch (error) {
-      console.error('Error saving configs:', error);
+      logger.error('Error saving configs:', error);
     }
   }
 

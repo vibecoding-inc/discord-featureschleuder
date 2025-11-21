@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FreeGame } from '../types';
+import { logger } from '../utils/logger';
 
 // Amazon Prime Gaming doesn't have a public API
 // This is a placeholder that would need a web scraper or third-party API
@@ -15,7 +16,7 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
     
     // For this implementation, we'll return an empty array
     // In production, you would integrate with a service that tracks Prime Gaming offers
-    console.log('Amazon Prime Gaming fetcher - No public API available');
+    logger.debug('Amazon Prime Gaming fetcher - No public API available');
     return [];
     
     // Placeholder for future implementation:
@@ -23,7 +24,7 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
     // Parse and return games
     
   } catch (error) {
-    console.error('Error fetching Amazon Prime Gaming games:', error);
+    logger.error('Error fetching Amazon Prime Gaming games:', error);
     return [];
   }
 }

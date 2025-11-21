@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FreeGame } from '../types';
+import { logger } from '../utils/logger';
 
 const GOG_API_URL = 'https://www.gog.com/games/ajax/filtered';
 
@@ -33,7 +34,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
 
     return games;
   } catch (error) {
-    console.error('Error fetching GoG games:', error);
+    logger.error('Error fetching GoG games:', error);
     return [];
   }
 }

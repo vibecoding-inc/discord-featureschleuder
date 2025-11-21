@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
 import { checkAllGuilds } from './utils/gameNotifier';
+import { logger } from './utils/logger';
 
 // Extend Client type to include commands
 declare module 'discord.js' {
@@ -15,8 +16,8 @@ declare module 'discord.js' {
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 if (!DISCORD_TOKEN) {
-  console.error('❌ DISCORD_TOKEN is not set in environment variables!');
-  console.error('Please create a .env file with your bot token.');
+  logger.error('DISCORD_TOKEN is not set in environment variables!');
+  logger.error('Please create a .env file with your bot token.');
   process.exit(1);
 }
 
@@ -38,9 +39,9 @@ for (const file of commandFiles) {
   const command = require(filePath);
   if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command);
-    console.log(`✅ Loaded command: ${command.data.name}`);
+    logger.success(`Loaded command: ${command.data.name}`);
   } else {
-    console.log(`⚠️ The command at ${filePath} is missing required "data" or "execute" property.`);
+    logger.warn(`The command at ${filePath} is missing required "data" or "execute" property.`);
   }
 }
 
@@ -56,29 +57,29 @@ for (const file of eventFiles) {
   } else {
     client.on(event.name, (...args) => event.execute(...args));
   }
-  console.log(`✅ Loaded event: ${event.name}`);
+  logger.success(`Loaded event: ${event.name}`);
 }
 
 // Schedule automatic checks for free games
 // Run every 6 hours
 cron.schedule('0 */6 * * *', async () => {
-  console.log('🔍 Running scheduled check for free games...');
+  logger.info('Running scheduled check for free games...');
   try {
     await checkAllGuilds(client);
-    console.log('✅ Scheduled check completed');
+    logger.success('Scheduled check completed');
   } catch (error) {
-    console.error('❌ Error during scheduled check:', error);
+    logger.error('Error during scheduled check:', error);
   }
 });
 
 // Also run at startup after a short delay
 setTimeout(async () => {
-  console.log('🔍 Running initial check for free games...');
+  logger.info('Running initial check for free games...');
   try {
     await checkAllGuilds(client);
-    console.log('✅ Initial check completed');
+    logger.success('Initial check completed');
   } catch (error) {
-    console.error('❌ Error during initial check:', error);
+    logger.error('Error during initial check:', error);
   }
 }, 10000); // Wait 10 seconds after startup
 
@@ -87,13 +88,13 @@ client.login(DISCORD_TOKEN);
 
 // Handle process termination
 process.on('SIGINT', () => {
-  console.log('👋 Shutting down...');
+  logger.info('Shutting down...');
   client.destroy();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('👋 Shutting down...');
+  logger.info('Shutting down...');
   client.destroy();
   process.exit(0);
 });

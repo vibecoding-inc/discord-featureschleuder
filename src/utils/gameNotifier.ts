@@ -2,19 +2,20 @@ import { Client, TextChannel, NewsChannel } from 'discord.js';
 import { checkAllGames, generateGameId } from '../services/gameChecker';
 import { createGameEmbed } from './embeds';
 import { configManager } from './config';
+import { logger } from './logger';
 
 export async function checkAndPostGames(client: Client, guildId: string): Promise<number> {
   const config = configManager.getConfig(guildId);
   
   if (!config.channelId) {
-    console.log(`No channel set for guild ${guildId}`);
+    logger.debug(`No channel set for guild ${guildId}`);
     return 0;
   }
 
   const channel = await client.channels.fetch(config.channelId);
   
   if (!channel || (!channel.isTextBased() && !(channel instanceof NewsChannel))) {
-    console.log(`Invalid channel for guild ${guildId}`);
+    logger.warn(`Invalid channel for guild ${guildId}`);
     return 0;
   }
 
@@ -34,9 +35,9 @@ export async function checkAndPostGames(client: Client, guildId: string): Promis
         if (channel instanceof NewsChannel) {
           try {
             await message.crosspost();
-            console.log(`Auto-published message for ${game.title}`);
+            logger.info(`Auto-published message for ${game.title}`);
           } catch (error) {
-            console.error(`Failed to crosspost message for ${game.title}:`, error);
+            logger.error(`Failed to crosspost message for ${game.title}:`, error);
           }
         }
 
@@ -48,7 +49,7 @@ export async function checkAndPostGames(client: Client, guildId: string): Promis
         // Add a small delay between messages to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
-        console.error(`Error posting game ${game.title}:`, error);
+        logger.error(`Error posting game ${game.title}:`, error);
       }
     }
   }
@@ -63,7 +64,7 @@ export async function checkAllGuilds(client: Client): Promise<void> {
     try {
       await checkAndPostGames(client, guildId);
     } catch (error) {
-      console.error(`Error checking games for guild ${guildId}:`, error);
+      logger.error(`Error checking games for guild ${guildId}:`, error);
     }
   }
 }
