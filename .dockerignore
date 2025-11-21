@@ -1,0 +1,16 @@
+# Docker
+.dockerignore
+
+# Build and run
+docker build -t discord-freegames-bot .
+docker run -d --name discord-bot --env-file .env -v $(pwd)/data:/app/data discord-freegames-bot
+
+# Or use docker-compose
+docker-compose up -d
+
+# View logs
+docker logs -f discord-bot
+
+# Stop the bot
+docker stop discord-bot
+docker-compose down
