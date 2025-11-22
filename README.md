@@ -154,6 +154,55 @@ npm start              # Run compiled code
 npm run deploy-commands # Deploy slash commands
 ```
 
+## 🐳 Docker Deployment
+
+### Using Docker Compose
+
+The easiest way to run the bot with Docker:
+
+```bash
+# Copy and edit environment variables
+cp .env.example .env
+# Edit .env with your Discord credentials
+
+# Start the bot
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the bot
+docker-compose down
+```
+
+### Using Docker directly
+
+```bash
+# Build the image
+docker build -t discord-freegames-bot .
+
+# Run the container
+docker run -d \
+  --name discord-bot \
+  -e DISCORD_TOKEN=your_token \
+  -e CLIENT_ID=your_client_id \
+  -v $(pwd)/data:/app/data \
+  discord-freegames-bot
+```
+
+## ☸️ Kubernetes Deployment
+
+For production deployments on Kubernetes, see the [k8s/README.md](k8s/README.md) for detailed instructions.
+
+Quick start:
+```bash
+cd k8s
+# Edit secret.yaml with your credentials
+kubectl apply -k .
+```
+
+The bot can be deployed using the provided Kubernetes manifests with Kustomize. Docker images are automatically published to GitHub Container Registry (ghcr.io) when a new release is created.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to:
