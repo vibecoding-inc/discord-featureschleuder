@@ -30,7 +30,7 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
       }
 
       const imageUrl = game.keyImages?.find(
-        (img: any) => img.type === 'Thumbnail' || img.type === 'OfferImageWide'
+        (img: { type: string; url: string }) => img.type === 'Thumbnail' || img.type === 'OfferImageWide'
       )?.url || '';
 
       const originalPrice = game.price?.totalPrice?.fmtPrice?.originalPrice || 'Free';

@@ -4,6 +4,7 @@ import path from 'path';
 import cron from 'node-cron';
 import { checkAllGuilds } from './utils/gameNotifier';
 import { logger } from './utils/logger';
+import { configManager } from './utils/config';
 
 // Extend Client type to include commands
 declare module 'discord.js' {
@@ -89,12 +90,14 @@ client.login(DISCORD_TOKEN);
 // Handle process termination
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
+  configManager.forceSave(); // Ensure all pending config changes are saved
   client.destroy();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   logger.info('Shutting down...');
+  configManager.forceSave(); // Ensure all pending config changes are saved
   client.destroy();
   process.exit(0);
 });

@@ -1,16 +1,37 @@
-# Docker
-.dockerignore
+# Node.js
+node_modules
+npm-debug.log
+yarn-error.log
 
-# Build and run
-docker build -t discord-freegames-bot .
-docker run -d --name discord-bot --env-file .env -v $(pwd)/data:/app/data discord-freegames-bot
+# Build output
+dist
 
-# Or use docker-compose
-docker-compose up -d
+# Environment variables
+.env
+.env.*
 
-# View logs
-docker logs -f discord-bot
+# Data files (mounted as a volume)
+data/
 
-# Stop the bot
-docker stop discord-bot
-docker-compose down
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+
+# Logs
+*.log
+logs/

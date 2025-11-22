@@ -1,4 +1,4 @@
-import { FreeGame } from '../types';
+import { FreeGame, BotConfig } from '../types';
 import { fetchEpicGames } from './epic';
 import { fetchSteamGames } from './steam';
 import { fetchGoGGames } from './gog';
@@ -15,55 +15,30 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
   const config = configManager.getConfig(guildId);
   const results: GameFetchResult[] = [];
 
-  if (config.enabledServices.epic) {
-    try {
-      const games = await fetchEpicGames();
-      const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
-      if (newGames.length > 0) {
-        results.push({ games: newGames, service: 'epic' });
-        configManager.updateLastChecked(guildId, 'epic');
-      }
-    } catch (error) {
-      logger.error('Error checking Epic Games:', error);
-    }
-  }
+  // Map service names to their fetcher functions
+  const serviceFetchers: Record<keyof BotConfig['enabledServices'], () => Promise<FreeGame[]>> = {
+    epic: fetchEpicGames,
+    steam: fetchSteamGames,
+    gog: fetchGoGGames,
+    amazonPrime: fetchAmazonPrimeGames,
+  };
 
-  if (config.enabledServices.steam) {
-    try {
-      const games = await fetchSteamGames();
-      const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
-      if (newGames.length > 0) {
-        results.push({ games: newGames, service: 'steam' });
-        configManager.updateLastChecked(guildId, 'steam');
+  // Iterate over all services
+  for (const [serviceName, fetcher] of Object.entries(serviceFetchers)) {
+    const key = serviceName as keyof BotConfig['enabledServices'];
+    
+    if (config.enabledServices[key]) {
+      try {
+        const games = await fetcher();
+        const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
+        
+        if (newGames.length > 0) {
+          results.push({ games: newGames, service: key });
+          configManager.updateLastChecked(guildId, key);
+        }
+      } catch (error) {
+        logger.error(`Error checking ${key}:`, error);
       }
-    } catch (error) {
-      logger.error('Error checking Steam:', error);
-    }
-  }
-
-  if (config.enabledServices.gog) {
-    try {
-      const games = await fetchGoGGames();
-      const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
-      if (newGames.length > 0) {
-        results.push({ games: newGames, service: 'gog' });
-        configManager.updateLastChecked(guildId, 'gog');
-      }
-    } catch (error) {
-      logger.error('Error checking GoG:', error);
-    }
-  }
-
-  if (config.enabledServices.amazonPrime) {
-    try {
-      const games = await fetchAmazonPrimeGames();
-      const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
-      if (newGames.length > 0) {
-        results.push({ games: newGames, service: 'amazonPrime' });
-        configManager.updateLastChecked(guildId, 'amazonPrime');
-      }
-    } catch (error) {
-      logger.error('Error checking Amazon Prime Gaming:', error);
     }
   }
 

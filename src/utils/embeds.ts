@@ -20,13 +20,9 @@ export function createGameEmbed(game: FreeGame): EmbedBuilder {
   }
 
   if (game.endDate) {
-    const endDateStr = game.endDate.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    // Use Discord timestamp formatting for better user experience (shows in user's local timezone)
+    const timestamp = Math.floor(game.endDate.getTime() / 1000);
+    const endDateStr = `<t:${timestamp}:F>`;
     embed.addFields({ name: '⏰ Available Until', value: endDateStr, inline: false });
   }
 

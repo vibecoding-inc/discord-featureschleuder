@@ -5,9 +5,12 @@ import { logger } from './logger';
 
 const CONFIG_DIR = path.join(__dirname, '../../data');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const SAVE_DEBOUNCE_MS = 5000; // Save after 5 seconds of inactivity
 
 export class ConfigManager {
   private configs: GuildConfigs = {};
+  private saveTimer: NodeJS.Timeout | null = null;
+  private isDirty: boolean = false;
 
   constructor() {
     this.loadConfigs();
@@ -35,8 +38,37 @@ export class ConfigManager {
         fs.mkdirSync(CONFIG_DIR, { recursive: true });
       }
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(this.configs, null, 2));
+      this.isDirty = false;
+      logger.debug('Configs saved to disk');
     } catch (error) {
       logger.error('Error saving configs:', error);
+    }
+  }
+
+  private scheduleSave(): void {
+    this.isDirty = true;
+    
+    // Clear existing timer
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+
+    // Schedule new save
+    this.saveTimer = setTimeout(() => {
+      if (this.isDirty) {
+        this.saveConfigs();
+      }
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  // Force immediate save (called during graceful shutdown)
+  public forceSave(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (this.isDirty) {
+      this.saveConfigs();
     }
   }
 
@@ -59,7 +91,7 @@ export class ConfigManager {
         },
         sentGames: [],
       };
-      this.saveConfigs();
+      this.scheduleSave();
     }
     return this.configs[guildId];
   }
@@ -67,26 +99,26 @@ export class ConfigManager {
   updateConfig(guildId: string, updates: Partial<BotConfig>): void {
     const config = this.getConfig(guildId);
     this.configs[guildId] = { ...config, ...updates };
-    this.saveConfigs();
+    this.scheduleSave();
   }
 
   setChannel(guildId: string, channelId: string): void {
     const config = this.getConfig(guildId);
     config.channelId = channelId;
-    this.saveConfigs();
+    this.scheduleSave();
   }
 
   toggleService(guildId: string, service: keyof BotConfig['enabledServices'], enabled: boolean): void {
     const config = this.getConfig(guildId);
     config.enabledServices[service] = enabled;
-    this.saveConfigs();
+    this.scheduleSave();
   }
 
   addSentGame(guildId: string, gameId: string): void {
     const config = this.getConfig(guildId);
     if (!config.sentGames.includes(gameId)) {
       config.sentGames.push(gameId);
-      this.saveConfigs();
+      this.scheduleSave();
     }
   }
 
@@ -98,7 +130,7 @@ export class ConfigManager {
   updateLastChecked(guildId: string, service: keyof BotConfig['lastChecked']): void {
     const config = this.getConfig(guildId);
     config.lastChecked[service] = new Date();
-    this.saveConfigs();
+    this.scheduleSave();
   }
 
   getAllConfigs(): GuildConfigs {

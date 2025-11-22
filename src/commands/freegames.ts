@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import { configManager } from '../utils/config';
 import { createSuccessEmbed, createErrorEmbed } from '../utils/embeds';
+import { BotConfig } from '../types';
 
 export const data = new SlashCommandBuilder()
   .setName('freegames')
@@ -111,9 +112,9 @@ async function handleChannelSubcommand(interaction: ChatInputCommandInteraction,
 }
 
 async function handleEnableSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
-  const service = interaction.options.getString('service', true);
+  const service = interaction.options.getString('service', true) as keyof BotConfig['enabledServices'];
   
-  configManager.toggleService(guildId, service as any, true);
+  configManager.toggleService(guildId, service, true);
   
   const serviceName = getServiceName(service);
   await interaction.reply({
@@ -123,9 +124,9 @@ async function handleEnableSubcommand(interaction: ChatInputCommandInteraction, 
 }
 
 async function handleDisableSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
-  const service = interaction.options.getString('service', true);
+  const service = interaction.options.getString('service', true) as keyof BotConfig['enabledServices'];
   
-  configManager.toggleService(guildId, service as any, false);
+  configManager.toggleService(guildId, service, false);
   
   const serviceName = getServiceName(service);
   await interaction.reply({
