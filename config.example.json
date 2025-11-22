@@ -1,0 +1,21 @@
+{
+  "guildId": "123456789012345678",
+  "channelId": "987654321098765432",
+  "enabledServices": {
+    "epic": true,
+    "steam": true,
+    "gog": true,
+    "amazonPrime": false
+  },
+  "lastChecked": {
+    "epic": "2025-11-21T08:00:00.000Z",
+    "steam": "2025-11-21T08:00:00.000Z",
+    "gog": "2025-11-21T08:00:00.000Z",
+    "amazonPrime": null
+  },
+  "sentGames": [
+    "epic-games-game-title",
+    "steam-another-game",
+    "gog-classic-game"
+  ]
+}
