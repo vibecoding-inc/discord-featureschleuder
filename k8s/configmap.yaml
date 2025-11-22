@@ -6,17 +6,18 @@ metadata:
 data:
   # Example configuration - replace with your actual values
   # Guild ID for development (optional)
-  GUILD_ID: "your_guild_id_here"
+  GUILD_ID: "000000000000000000"
   
   # Log level (DEBUG or INFO)
   LOG_LEVEL: "INFO"
   
   # Initial bot configuration
   # This will be stored in /app/data/config.json
+  # Replace the IDs below with your actual Discord server and channel IDs
   config.json: |
     {
-      "guildId": "123456789012345678",
-      "channelId": "987654321098765432",
+      "guildId": "000000000000000000",
+      "channelId": "000000000000000000",
       "enabledServices": {
         "epic": true,
         "steam": true,

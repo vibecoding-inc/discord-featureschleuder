@@ -18,7 +18,7 @@ spec:
       containers:
       - name: discord-bot
         image: ghcr.io/vibecoding-inc/discord-featureschleuder:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         env:
         # Discord credentials from secret
         - name: DISCORD_TOKEN
