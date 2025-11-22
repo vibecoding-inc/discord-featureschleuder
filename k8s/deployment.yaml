@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-bot
+  namespace: discord-bot
+  labels:
+    app: discord-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discord-bot
+  template:
+    metadata:
+      labels:
+        app: discord-bot
+    spec:
+      containers:
+      - name: discord-bot
+        image: ghcr.io/vibecoding-inc/discord-featureschleuder:latest
+        imagePullPolicy: Always
+        env:
+        # Discord credentials from secret
+        - name: DISCORD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: discord-bot-secret
+              key: DISCORD_TOKEN
+        - name: CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: discord-bot-secret
+              key: CLIENT_ID
+        # Optional guild ID from configmap
+        - name: GUILD_ID
+          valueFrom:
+            configMapKeyRef:
+              name: discord-bot-config
+              key: GUILD_ID
+              optional: true
+        # Log level from configmap
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: discord-bot-config
+              key: LOG_LEVEL
+              optional: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        - name: config
+          mountPath: /app/data/config.json
+          subPath: config.json
+      volumes:
+      - name: data
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: discord-bot-config
+          items:
+          - key: config.json
+            path: config.json
+      restartPolicy: Always
