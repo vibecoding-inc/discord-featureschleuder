@@ -79,7 +79,6 @@ export class StateManager {
 
     // Schedule new save
     this.saveTimer = setTimeout(() => {
-      this.isDirty = false;
       this.saveStates();
     }, SAVE_DEBOUNCE_MS);
   }
