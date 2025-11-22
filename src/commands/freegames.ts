@@ -101,36 +101,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleChannelSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
-  const channel = interaction.options.getChannel('channel', true);
-  
-  configManager.setChannel(guildId, channel.id);
-  
   await interaction.reply({
-    embeds: [createSuccessEmbed(`Free game notifications will now be sent to <#${channel.id}>`)],
+    embeds: [createErrorEmbed('Channel configuration is now managed via the CHANNEL_ID environment variable. Please update your deployment configuration.')],
     ephemeral: true,
   });
 }
 
 async function handleEnableSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
   const service = interaction.options.getString('service', true) as keyof BotConfig['enabledServices'];
-  
-  configManager.toggleService(guildId, service, true);
-  
   const serviceName = getServiceName(service);
+  
   await interaction.reply({
-    embeds: [createSuccessEmbed(`${serviceName} notifications have been enabled.`)],
+    embeds: [createErrorEmbed(`Service configuration is now managed via environment variables (ENABLE_EPIC, ENABLE_STEAM, ENABLE_GOG, ENABLE_AMAZON_PRIME). Please update your deployment configuration to enable ${serviceName}.`)],
     ephemeral: true,
   });
 }
 
 async function handleDisableSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
   const service = interaction.options.getString('service', true) as keyof BotConfig['enabledServices'];
-  
-  configManager.toggleService(guildId, service, false);
-  
   const serviceName = getServiceName(service);
+  
   await interaction.reply({
-    embeds: [createSuccessEmbed(`${serviceName} notifications have been disabled.`)],
+    embeds: [createErrorEmbed(`Service configuration is now managed via environment variables (ENABLE_EPIC, ENABLE_STEAM, ENABLE_GOG, ENABLE_AMAZON_PRIME). Please update your deployment configuration to disable ${serviceName}.`)],
     ephemeral: true,
   });
 }
@@ -139,13 +131,13 @@ async function handleStatusSubcommand(interaction: ChatInputCommandInteraction, 
   const config = configManager.getConfig(guildId);
   
   const statusText = `
-**Channel:** ${config.channelId ? `<#${config.channelId}>` : 'Not set'}
+**Channel:** ${config.channelId ? `<#${config.channelId}>` : 'Not set (configure via CHANNEL_ID env var)'}
 
-**Enabled Services:**
-${config.enabledServices.epic ? '✅' : '❌'} Epic Games
-${config.enabledServices.steam ? '✅' : '❌'} Steam
-${config.enabledServices.gog ? '✅' : '❌'} GoG
-${config.enabledServices.amazonPrime ? '✅' : '❌'} Amazon Prime Gaming
+**Enabled Services:** *(configured via environment variables)*
+${config.enabledServices.epic ? '✅' : '❌'} Epic Games (ENABLE_EPIC)
+${config.enabledServices.steam ? '✅' : '❌'} Steam (ENABLE_STEAM)
+${config.enabledServices.gog ? '✅' : '❌'} GoG (ENABLE_GOG)
+${config.enabledServices.amazonPrime ? '✅' : '❌'} Amazon Prime Gaming (ENABLE_AMAZON_PRIME)
 
 **Last Checked:**
 Epic: ${config.lastChecked.epic ? new Date(config.lastChecked.epic).toLocaleString() : 'Never'}

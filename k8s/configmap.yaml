@@ -4,31 +4,19 @@ metadata:
   name: discord-bot-config
   namespace: discord-bot
 data:
-  # Example configuration - replace with your actual values
+  # Discord Channel ID where free game notifications will be posted
+  # This is required for the bot to function
+  CHANNEL_ID: "000000000000000000"
+  
   # Guild ID for development (optional)
   GUILD_ID: "000000000000000000"
   
   # Log level (DEBUG or INFO)
   LOG_LEVEL: "INFO"
   
-  # Initial bot configuration
-  # This will be stored in /app/data/config.json
-  # Replace the IDs below with your actual Discord server and channel IDs
-  config.json: |
-    {
-      "guildId": "000000000000000000",
-      "channelId": "000000000000000000",
-      "enabledServices": {
-        "epic": true,
-        "steam": true,
-        "gog": true,
-        "amazonPrime": false
-      },
-      "lastChecked": {
-        "epic": null,
-        "steam": null,
-        "gog": null,
-        "amazonPrime": null
-      },
-      "sentGames": []
-    }
+  # Enable/disable individual game platforms
+  # Set to "true" or "false"
+  ENABLE_EPIC: "true"
+  ENABLE_STEAM: "true"
+  ENABLE_GOG: "true"
+  ENABLE_AMAZON_PRIME: "false"

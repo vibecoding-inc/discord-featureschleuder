@@ -34,12 +34,30 @@ kubectl create secret generic discord-bot-secret \
 
 If using Option B, comment out or remove the `secret.yaml` from `kustomization.yaml`.
 
-### 2. Configure Bot Settings (Optional)
+### 2. Configure Bot Settings (Required)
 
-Edit `configmap.yaml` to customize:
-- Guild ID (optional, for development)
-- Log level (DEBUG or INFO)
-- Initial bot configuration (channel, enabled services)
+Edit `configmap.yaml` to set your bot configuration:
+
+**Required:**
+- `CHANNEL_ID`: The Discord channel ID where free game notifications will be posted
+
+**Optional:**
+- `GUILD_ID`: Guild ID for development (optional)
+- `LOG_LEVEL`: Log level (DEBUG or INFO)
+- `ENABLE_EPIC`: Enable Epic Games notifications (true/false)
+- `ENABLE_STEAM`: Enable Steam notifications (true/false)
+- `ENABLE_GOG`: Enable GoG notifications (true/false)
+- `ENABLE_AMAZON_PRIME`: Enable Amazon Prime Gaming notifications (true/false)
+
+Example:
+```yaml
+data:
+  CHANNEL_ID: "123456789012345678"  # Replace with your channel ID
+  ENABLE_EPIC: "true"
+  ENABLE_STEAM: "true"
+  ENABLE_GOG: "true"
+  ENABLE_AMAZON_PRIME: "false"
+```
 
 ### 3. Deploy with Kustomize
 
@@ -84,9 +102,13 @@ k8s/
 Creates a dedicated namespace `discord-bot` for isolating the bot resources.
 
 ### configmap.yaml
-Contains non-sensitive configuration:
-- Environment variables (GUILD_ID, LOG_LEVEL)
-- Initial bot configuration (config.json)
+Contains bot configuration as environment variables:
+- `CHANNEL_ID`: Discord channel ID for notifications (required)
+- `GUILD_ID`: Guild ID for development (optional)
+- `LOG_LEVEL`: Logging level (DEBUG or INFO)
+- `ENABLE_*`: Feature flags for each game platform (true/false)
+
+**Note:** Bot configuration is now entirely managed through environment variables. Runtime state (last checked times, sent games) is stored in `/app/data/state.json` on the persistent volume.
 
 ### secret.yaml
 Contains sensitive Discord credentials:
@@ -99,8 +121,9 @@ Contains sensitive Discord credentials:
 Defines the bot deployment with:
 - Single replica (bots should not run multiple instances)
 - Resource limits (512Mi RAM, 500m CPU)
-- Volume mounts for persistent data
+- Volume mount for persistent state data (`state.json`)
 - Environment variables from ConfigMap and Secret
+- No imagePullPolicy specified (uses cluster default)
 
 ### kustomization.yaml
 Kustomize configuration that:
@@ -135,7 +158,7 @@ resources:
 
 ### Using Persistent Storage
 
-By default, the bot uses `emptyDir` for data storage. To use persistent storage:
+By default, the bot uses `emptyDir` for state storage (state.json with last checked times and sent games). To use persistent storage across pod restarts:
 
 1. Create a PersistentVolumeClaim:
 ```yaml
@@ -159,6 +182,8 @@ volumes:
   persistentVolumeClaim:
     claimName: discord-bot-data
 ```
+
+**Note:** The volume stores only runtime state (state.json). Configuration is managed through environment variables in the ConfigMap.
 
 ## Troubleshooting
 
