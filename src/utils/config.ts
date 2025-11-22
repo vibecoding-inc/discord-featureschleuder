@@ -55,9 +55,9 @@ export class ConfigManager {
 
     // Schedule new save
     this.saveTimer = setTimeout(() => {
-      if (this.isDirty) {
-        this.saveConfigs();
-      }
+      // Set isDirty to false immediately to avoid race conditions
+      this.isDirty = false;
+      this.saveConfigs();
     }, SAVE_DEBOUNCE_MS);
   }
 

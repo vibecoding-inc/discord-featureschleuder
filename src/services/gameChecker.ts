@@ -23,12 +23,11 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
     amazonPrime: fetchAmazonPrimeGames,
   };
 
-  // Iterate over all services
-  for (const [serviceName, fetcher] of Object.entries(serviceFetchers)) {
-    const key = serviceName as keyof BotConfig['enabledServices'];
-    
+  // Iterate over all services with type-safe iteration
+  for (const key of Object.keys(serviceFetchers) as Array<keyof BotConfig['enabledServices']>) {
     if (config.enabledServices[key]) {
       try {
+        const fetcher = serviceFetchers[key];
         const games = await fetcher();
         const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
         
