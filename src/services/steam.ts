@@ -58,8 +58,8 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
           rating: details.rating,
         });
         
-        // Add delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Add small delay to avoid rate limiting when fetching multiple game details
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 

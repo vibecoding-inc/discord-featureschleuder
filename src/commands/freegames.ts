@@ -248,9 +248,9 @@ async function handleListSubcommand(interaction: ChatInputCommandInteraction, gu
       
       messageCount++;
       
-      // Add a small delay between messages to avoid rate limiting
+      // Add a small delay between message batches to avoid rate limiting
       if (i + maxEmbedsPerMessage < embeds.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
   } catch (error) {
