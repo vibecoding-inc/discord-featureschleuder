@@ -4,6 +4,25 @@ import { logger } from '../utils/logger';
 
 const EPIC_API_URL = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions';
 
+// Map of Epic tag IDs to human-readable genre names (common ones)
+const EPIC_TAG_MAP: Record<string, string> = {
+  '1216': 'Action',
+  '1367': 'Adventure',
+  '1370': 'Single Player',
+  '1115': 'Shooter',
+  '1117': 'RPG',
+  '1210': 'Indie',
+  '1203': 'Puzzle',
+  '1230': 'Strategy',
+  '1188': 'Fighting',
+  '9547': 'Multiplayer',
+  '1263': 'Platformer',
+  '1299': 'Survival',
+  '1298': 'Horror',
+  '1181': 'Competitive',
+  '19847': 'Co-op',
+};
+
 export async function fetchEpicGames(): Promise<FreeGame[]> {
   try {
     const response = await axios.get(EPIC_API_URL, {
@@ -35,6 +54,32 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
 
       const originalPrice = game.price?.totalPrice?.fmtPrice?.originalPrice || 'Free';
 
+      // Extract genres from tags and categories
+      const genres: string[] = [];
+      
+      // Map tag IDs to genre names
+      if (game.tags) {
+        for (const tag of game.tags.slice(0, 5)) { // Limit to first 5 tags
+          const genreName = EPIC_TAG_MAP[tag.id];
+          if (genreName && !genres.includes(genreName)) {
+            genres.push(genreName);
+          }
+        }
+      }
+      
+      // Also check categories for genre-like information
+      if (game.categories && genres.length < 3) {
+        for (const category of game.categories) {
+          const path = category.path;
+          if (path.startsWith('games/') && path !== 'games' && path !== 'games/edition' && path !== 'games/edition/base') {
+            const genreName = path.split('/').pop();
+            if (genreName && !genres.includes(genreName)) {
+              genres.push(genreName.charAt(0).toUpperCase() + genreName.slice(1));
+            }
+          }
+        }
+      }
+
       games.push({
         title: game.title,
         description: game.description || '',
@@ -44,6 +89,7 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
         startDate: new Date(promotions[0].startDate),
         endDate: new Date(promotions[0].endDate),
         originalPrice,
+        genres: genres.length > 0 ? genres.slice(0, 3) : undefined, // Limit to 3 genres
       });
     }
 

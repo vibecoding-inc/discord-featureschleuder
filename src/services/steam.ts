@@ -4,7 +4,32 @@ import { logger } from '../utils/logger';
 
 // Steam's featured games endpoint
 const STEAM_API_URL = 'https://store.steampowered.com/api/featured';
-const STEAM_FREE_GAMES_URL = 'https://store.steampowered.com/search/results/?query&start=0&count=50&dynamic_data=&sort_by=_ASC&specials=1&maxprice=free&snr=1_7_7_230_7&filter=topsellers&hidef2p=1&ndl=1';
+const STEAM_DETAILS_API = 'https://store.steampowered.com/api/appdetails';
+
+async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string } }> {
+  try {
+    const response = await axios.get(STEAM_DETAILS_API, {
+      params: { appids: appId },
+      timeout: 5000,
+    });
+    
+    const gameData = response.data?.[appId]?.data;
+    if (!gameData) {
+      return {};
+    }
+
+    const genres = gameData.genres?.map((g: { description: string }) => g.description).slice(0, 3) || [];
+    const rating = gameData.metacritic ? {
+      score: gameData.metacritic.score,
+      source: 'Metacritic',
+    } : undefined;
+
+    return { genres, rating };
+  } catch (error) {
+    logger.debug(`Failed to fetch details for Steam app ${appId}:`, error);
+    return {};
+  }
+}
 
 export async function fetchSteamGames(): Promise<FreeGame[]> {
   try {
@@ -19,6 +44,9 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
     for (const game of featuredGames) {
       // Check if game is currently free (discount of 100%)
       if (game.discount_percent === 100 || game.final_price === 0) {
+        // Fetch detailed information for the game
+        const details = await fetchGameDetails(game.id);
+        
         games.push({
           title: game.name,
           description: game.header_image ? '' : 'Limited time free game on Steam',
@@ -26,7 +54,12 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
           url: `https://store.steampowered.com/app/${game.id}`,
           store: 'Steam',
           originalPrice: game.original_price ? `$${(game.original_price / 100).toFixed(2)}` : undefined,
+          genres: details.genres,
+          rating: details.rating,
         });
+        
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
