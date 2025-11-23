@@ -16,6 +16,12 @@ COPY src ./src
 # Build the application
 RUN npm run build
 
+# Copy entrypoint script
+COPY entrypoint.sh ./
+
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh
+
 # Remove dev dependencies and source files to reduce image size
 RUN npm prune --production
 RUN rm -rf src tsconfig.json
@@ -29,5 +35,5 @@ RUN adduser -S nodejs -u 1001
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 
-# Start the bot
-CMD ["node", "dist/index.js"]
+# Start the bot using entrypoint script
+CMD ["./entrypoint.sh"]

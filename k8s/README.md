@@ -72,17 +72,24 @@ kubectl get pods -n discord-bot
 kubectl logs -f deployment/discord-bot -n discord-bot
 ```
 
-### 4. Deploy Commands to Discord
+### 4. Verify Deployment
 
-After the bot is running, you need to register the slash commands with Discord:
+After deploying, check the logs to verify the bot started successfully and commands were deployed:
 
 ```bash
-# Get pod name
-POD_NAME=$(kubectl get pod -n discord-bot -l app=discord-bot -o jsonpath="{.items[0].metadata.name}")
+# Check deployment status
+kubectl get pods -n discord-bot
 
-# Run deploy commands
-kubectl exec -it $POD_NAME -n discord-bot -- node dist/deploy-commands.js
+# View logs
+kubectl logs -f deployment/discord-bot -n discord-bot
 ```
+
+You should see log messages indicating:
+1. ✅ Slash commands deployed successfully
+2. ✅ Logged in as [your bot name]
+3. 🎮 Free Games Bot is ready!
+
+**Note:** The bot automatically deploys slash commands to Discord on startup. You don't need to manually run the deploy-commands script.
 
 ## File Structure
 
