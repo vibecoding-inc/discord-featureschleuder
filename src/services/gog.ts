@@ -21,6 +21,9 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
     for (const game of products.slice(0, 10)) {
       // Only include games that are actually free (not demos or DLC)
       if (game.price?.amount === '0' || game.price?.isFree) {
+        // Extract genres from genre string (e.g., "Action, Adventure")
+        const genres = game.genre ? game.genre.split(',').map((g: string) => g.trim()).slice(0, 3) : undefined;
+        
         games.push({
           title: game.title,
           description: game.genre || 'Free game on GoG',
@@ -28,6 +31,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           url: `https://www.gog.com${game.url}`,
           store: 'GoG',
           originalPrice: game.price?.baseAmount ? `$${game.price.baseAmount}` : undefined,
+          genres,
         });
       }
     }
