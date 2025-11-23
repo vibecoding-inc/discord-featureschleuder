@@ -193,7 +193,6 @@ docker run -d \
 ```
 
 **Note:** Slash commands are automatically deployed when the container starts. Check the logs with `docker logs discord-bot` to verify successful deployment.
-```
 
 ## ☸️ Kubernetes Deployment
 
