@@ -175,6 +175,8 @@ docker-compose logs -f
 docker-compose down
 ```
 
+**Note:** The bot automatically deploys slash commands to Discord on startup. The first time you run the bot, you'll see a message in the logs confirming that commands were successfully deployed.
+
 ### Using Docker directly
 
 ```bash
@@ -190,6 +192,9 @@ docker run -d \
   discord-freegames-bot
 ```
 
+**Note:** Slash commands are automatically deployed when the container starts. Check the logs with `docker logs discord-bot` to verify successful deployment.
+```
+
 ## ☸️ Kubernetes Deployment
 
 For production deployments on Kubernetes, see the [k8s/README.md](k8s/README.md) for detailed instructions.
@@ -202,6 +207,8 @@ kubectl apply -k .
 ```
 
 The bot can be deployed using the provided Kubernetes manifests with Kustomize. Docker images are automatically published to GitHub Container Registry (ghcr.io) when a new release is created.
+
+**Note:** Slash commands are automatically deployed to Discord when the bot starts - no manual deployment step needed!
 
 ## 🤝 Contributing
 
