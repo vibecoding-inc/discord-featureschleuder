@@ -3,6 +3,7 @@
 # Discord Free Games Bot - Entrypoint Script
 # This script ensures slash commands are deployed before starting the bot
 
+# Exit immediately if any command fails
 set -e
 
 echo "🎮 Starting Discord Free Games Bot..."
