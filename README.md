@@ -118,7 +118,7 @@ The bot stores configuration per server in `data/config.json`. Each server can h
 - **Epic Games**: Uses the official Epic Games Store API
 - **Steam**: Limited due to lack of official free games API
 - **GoG**: Uses GoG's AJAX API
-- **Amazon Prime Gaming**: No public API available (currently returns empty, would need web scraping or third-party service)
+- **Amazon Prime Gaming**: Implements web scraping based on [lootscraper](https://github.com/eikowagenknecht/lootscraper) approach. Limited by Amazon's SPA architecture and authentication requirements. May return empty results when no offers are available or when Amazon's page structure changes.
 
 ## 🔧 Development
 
