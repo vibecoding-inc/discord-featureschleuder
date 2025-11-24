@@ -6,6 +6,9 @@ import { logger } from '../utils/logger';
 // Based on https://github.com/eikowagenknecht/lootscraper/tree/main/src/services/scraper/implementations/amazon
 const AMAZON_OFFERS_URL = 'https://gaming.amazon.com/home';
 
+// Maximum number of genres to extract and display
+const MAX_GENRES = 3;
+
 interface ScrapedGameData {
   title: string;
   imageUrl: string;
@@ -156,7 +159,7 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
           url: url || '',
           endDateText: endDateText || null,
           description,
-          genres: genres.slice(0, 3), // Limit to 3 genres
+          genres: genres.slice(0, MAX_GENRES),
           originalPrice,
         });
       } catch (e) {
