@@ -1,254 +1,199 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer';
 import { FreeGame } from '../types';
 import { logger } from '../utils/logger';
 
 // Amazon Prime Gaming endpoints
 // Based on https://github.com/eikowagenknecht/lootscraper/tree/main/src/services/scraper/implementations/amazon
-const AMAZON_GAMING_URL = 'https://gaming.amazon.com/home';
-const AMAZON_OFFERS_URL = 'https://luna.amazon.com/claims/home';
+const AMAZON_OFFERS_URL = 'https://gaming.amazon.com/home';
 
 /**
- * Fetches free games from Amazon Prime Gaming.
+ * Fetches free games from Amazon Prime Gaming using Puppeteer.
  * 
  * Implementation based on lootscraper approach:
  * https://github.com/eikowagenknecht/lootscraper
  * 
- * NOTE: Amazon Prime Gaming does not provide a public unauthenticated API.
- * The page is a React SPA that requires JavaScript execution to display offers.
+ * Uses Puppeteer to:
+ * 1. Load the Amazon Gaming page with JavaScript execution
+ * 2. Wait for the offers to load
+ * 3. Extract game data from the rendered DOM
  * 
- * This implementation attempts to:
- * 1. Scrape embedded JSON data from the page (if available via SSR)
- * 2. Parse any structured data that might be present in meta tags
- * 
- * Limitations:
- * - Without authentication and JavaScript execution (Playwright/Puppeteer), 
- *   we cannot access the full offer list
- * - Amazon's GraphQL API requires authentication
- * - The page uses selectors like [data-a-target="offer-list-FGWP_FULL"] but
- *   these are only populated after JavaScript execution
- * 
- * For production use, consider:
- * - Using Playwright/Puppeteer with proper browser automation
- * - Implementing authentication flow
- * - Using a third-party service that provides this data
+ * The page uses selector: [data-a-target="offer-list-FGWP_FULL"]
+ * for free game offers.
  */
 export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
+  let browser;
   try {
-    logger.debug('Fetching Amazon Prime Gaming games');
+    logger.debug('Fetching Amazon Prime Gaming games with Puppeteer');
     
-    // Attempt to scrape with embedded data extraction
-    const games = await scrapeAmazonOffers();
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+      ],
+    });
+
+    const page = await browser.newPage();
     
-    if (games.length > 0) {
-      logger.info(`Found ${games.length} Amazon Prime Gaming games`);
-      return games;
+    // Set a realistic user agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    logger.debug(`Navigating to ${AMAZON_OFFERS_URL}`);
+    await page.goto(AMAZON_OFFERS_URL, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    // Wait for the offers to load
+    try {
+      await page.waitForSelector('[data-a-target="offer-list-FGWP_FULL"], .offer-list__content', {
+        timeout: 10000,
+      });
+    } catch (e) {
+      logger.debug('Offer list not found, page may require authentication');
+      return [];
     }
 
-    logger.debug('No Amazon Prime Gaming games found. This may be normal if:');
-    logger.debug('- No games are currently offered');
-    logger.debug('- Authentication is required');
-    logger.debug('- The page structure has changed');
-    return [];
+    // Extract games from the page
+    const games = await scrapeGamesFromPage(page);
+    
+    logger.info(`Found ${games.length} Amazon Prime Gaming games`);
+    return games;
     
   } catch (error) {
     logger.error('Error fetching Amazon Prime Gaming games:', error);
     return [];
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
 /**
- * Scrapes Amazon Prime Gaming offers from the page.
- * Attempts to extract data from embedded JSON or structured data.
+ * Scrapes games from the Amazon Gaming page using Puppeteer.
+ * Follows the lootscraper approach for extracting offer data.
  */
-async function scrapeAmazonOffers(): Promise<FreeGame[]> {
+async function scrapeGamesFromPage(page: any): Promise<FreeGame[]> {
   try {
-    // Try both URLs - the main gaming page and the offers page
-    const urls = [AMAZON_GAMING_URL, AMAZON_OFFERS_URL];
+    // Extract game offers from the page
+    // Use page.$$ to query the DOM from Node.js side
+    const offerListExists = await page.$('[data-a-target="offer-list-FGWP_FULL"]');
     
-    for (const url of urls) {
+    if (!offerListExists) {
+      logger.debug('Free games offer list not found on page');
+      return [];
+    }
+    
+    // Find all game card links
+    const gameCards = await page.$$('[data-a-target="offer-list-FGWP_FULL"] .item-card__action > a:first-child');
+    
+    const games: any[] = [];
+    
+    for (const card of gameCards) {
       try {
-        const response = await axios.get(url, {
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://gaming.amazon.com/',
-          },
+        // Extract title
+        const titleElem = await card.$('.item-card-details__body__primary h3');
+        const title = titleElem ? await page.evaluate((el: any) => el.textContent?.trim(), titleElem) : null;
+        
+        if (!title) continue;
+        
+        // Extract image
+        const imgElem = await card.$('[data-a-target="card-image"] img');
+        const imageUrl = imgElem ? await page.evaluate((el: any) => el.getAttribute('src'), imgElem) : '';
+        
+        // Extract URL
+        const url = await page.evaluate((el: any) => el.getAttribute('href'), card);
+        
+        // Extract end date if available
+        const dateElem = await card.$('.availability-date span:nth-child(2)');
+        const endDateText = dateElem ? await page.evaluate((el: any) => el.textContent?.trim(), dateElem) : null;
+        
+        games.push({
+          title,
+          imageUrl: imageUrl || '',
+          url: url || '',
+          endDateText,
         });
-
-        const $ = cheerio.load(response.data);
-        const games: FreeGame[] = [];
-
-        // Strategy 1: Look for embedded JSON data in script tags
-        $('script').each((_, elem) => {
-          const scriptContent = $(elem).html();
-          if (!scriptContent) return;
-
-          // Look for JSON structures that might contain offer data
-          // Amazon sometimes embeds initial state in the HTML
-          try {
-            // Check for window.__INITIAL_STATE__ or similar patterns
-            // Use a more robust approach: find the assignment and extract until the statement end
-            const initialStateMatch = scriptContent.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);
-            if (initialStateMatch) {
-              try {
-                const state = JSON.parse(initialStateMatch[1]);
-                const extracted = extractGamesFromState(state);
-                games.push(...extracted);
-              } catch (parseError) {
-                // JSON parse failed, likely incomplete match - skip
-              }
-            }
-
-            // Check for other common patterns
-            // Look for offers property in object context
-            const dataMatch = scriptContent.match(/"offers"\s*:\s*(\[[^\]]*\])/);
-            if (dataMatch) {
-              try {
-                const offers = JSON.parse(dataMatch[1]);
-                const extracted = extractGamesFromOffers(offers);
-                games.push(...extracted);
-              } catch (parseError) {
-                // JSON parse failed - skip
-              }
-            }
-          } catch (e) {
-            // Continue searching other scripts
-          }
-        });
-
-        // Strategy 2: Look for JSON-LD structured data
-        $('script[type="application/ld+json"]').each((_, elem) => {
-          try {
-            const jsonData = $(elem).html();
-            if (jsonData) {
-              const data = JSON.parse(jsonData);
-              if (data['@type'] === 'ItemList' && data.itemListElement) {
-                const extracted = extractGamesFromStructuredData(data);
-                games.push(...extracted);
-              }
-            }
-          } catch (e) {
-            // Ignore parsing errors
-          }
-        });
-
-        if (games.length > 0) {
-          return games;
-        }
-      } catch (error) {
-        logger.debug(`Error scraping ${url}:`, error);
-        // Continue to next URL
-      }
-    }
-
-    // No games found from scraping
-    logger.debug('Amazon Gaming page is a SPA - no static game data found');
-    logger.debug('Consider using Playwright/Puppeteer for full JavaScript execution');
-    return [];
-    
-  } catch (error) {
-    logger.error('Error in scrapeAmazonOffers:', error);
-    return [];
-  }
-}
-
-/**
- * Extracts games from initial state object
- */
-function extractGamesFromState(state: any): FreeGame[] {
-  const games: FreeGame[] = [];
-  
-  try {
-    // Navigate the state object to find offers
-    if (state.offers && Array.isArray(state.offers)) {
-      for (const offer of state.offers) {
-        const game = parseAmazonOffer(offer);
-        if (game) games.push(game);
-      }
-    }
-  } catch (error) {
-    logger.debug('Error extracting from state:', error);
-  }
-  
-  return games;
-}
-
-/**
- * Extracts games from offers array
- */
-function extractGamesFromOffers(offers: any[]): FreeGame[] {
-  const games: FreeGame[] = [];
-  
-  try {
-    for (const offer of offers) {
-      const game = parseAmazonOffer(offer);
-      if (game) games.push(game);
-    }
-  } catch (error) {
-    logger.debug('Error extracting from offers:', error);
-  }
-  
-  return games;
-}
-
-/**
- * Extracts games from structured data
- */
-function extractGamesFromStructuredData(data: any): FreeGame[] {
-  const games: FreeGame[] = [];
-  
-  try {
-    if (data.itemListElement && Array.isArray(data.itemListElement)) {
-      for (const item of data.itemListElement) {
-        if (item.item) {
-          const game = parseAmazonOffer(item.item);
-          if (game) games.push(game);
-        }
-      }
-    }
-  } catch (error) {
-    logger.debug('Error extracting from structured data:', error);
-  }
-  
-  return games;
-}
-
-/**
- * Parses an Amazon offer object into our FreeGame format
- */
-function parseAmazonOffer(offer: any): FreeGame | null {
-  try {
-    const title = offer.title || offer.name;
-    if (!title) return null;
-
-    const imageUrl = offer.image || offer.imgUrl || offer.imageUrl || '';
-    const url = offer.url || offer.detailUrl || 'https://gaming.amazon.com/home';
-    const description = offer.description || 'Free game available on Amazon Prime Gaming';
-    
-    // Parse end date if available
-    let endDate: Date | undefined;
-    if (offer.endDate || offer.validTo || offer.endTime) {
-      try {
-        endDate = new Date(offer.endDate || offer.validTo || offer.endTime);
       } catch (e) {
-        // Invalid date format
+        // Skip this card if parsing fails
+        logger.debug('Error parsing game card:', e);
       }
     }
 
-    return {
-      title,
-      description,
-      imageUrl,
-      url: url.startsWith('http') ? url : `https://gaming.amazon.com${url}`,
-      store: 'Amazon Prime Gaming',
-      endDate,
-    };
+    // Convert to FreeGame format
+    const freeGames: FreeGame[] = [];
+    
+    for (const game of games) {
+      const url = game.url.startsWith('http') 
+        ? game.url 
+        : `https://gaming.amazon.com${game.url}`;
+      
+      // Parse end date if available
+      let endDate: Date | undefined;
+      if (game.endDateText) {
+        endDate = parseAmazonDate(game.endDateText);
+      }
+      
+      freeGames.push({
+        title: game.title,
+        description: `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`,
+        imageUrl: game.imageUrl,
+        url,
+        store: 'Amazon Prime Gaming',
+        endDate,
+      });
+    }
+    
+    return freeGames;
+    
   } catch (error) {
-    logger.debug('Error parsing offer:', error);
-    return null;
+    logger.error('Error scraping games from page:', error);
+    return [];
+  }
+}
+
+/**
+ * Parses Amazon's date format ("Ends in X days", "Ends today", "Ends tomorrow", "MMM D, YYYY")
+ * Based on lootscraper's parsing logic
+ */
+function parseAmazonDate(dateStr: string): Date | undefined {
+  try {
+    const cleaned = dateStr.replace(/^Ends\s+/i, '').trim();
+    const now = new Date();
+    
+    if (cleaned.toLowerCase() === 'today') {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    }
+    
+    if (cleaned.toLowerCase() === 'tomorrow') {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 23, 59, 59);
+    }
+    
+    // Try parsing "X days" format
+    const daysMatch = cleaned.match(/^(\d+)\s+days?$/i);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10);
+      const futureDate = new Date(now);
+      futureDate.setDate(futureDate.getDate() + days);
+      return new Date(futureDate.getFullYear(), futureDate.getMonth(), futureDate.getDate(), 23, 59, 59);
+    }
+    
+    // Try parsing "MMM D, YYYY" format
+    const date = new Date(cleaned);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+    
+    return undefined;
+  } catch (error) {
+    logger.debug(`Failed to parse date: ${dateStr}`);
+    return undefined;
   }
 }
 
