@@ -6,6 +6,21 @@ import { logger } from '../utils/logger';
 const STEAM_API_URL = 'https://store.steampowered.com/api/featuredcategories';
 const STEAM_DETAILS_API = 'https://store.steampowered.com/api/appdetails';
 
+// Category constants
+const CATEGORY_SPECIALS = 'specials';
+const CATEGORY_NEW_RELEASES = 'new_releases';
+const CATEGORY_TOP_SELLERS = 'top_sellers';
+
+interface SteamGame {
+  id: number;
+  name: string;
+  discount_percent: number;
+  original_price: number | null;
+  final_price: number;
+  header_image?: string;
+  large_capsule_image?: string;
+}
+
 async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string } }> {
   try {
     const response = await axios.get(STEAM_DETAILS_API, {
@@ -32,7 +47,7 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
 }
 
 // Helper function to determine if a game should be included
-function isEligibleFreeGame(game: any, category: string): boolean {
+function isEligibleFreeGame(game: SteamGame, category: string): boolean {
   // Include games with 100% discount (temporary free promotions)
   if (game.discount_percent === 100) {
     return true;
@@ -40,7 +55,7 @@ function isEligibleFreeGame(game: any, category: string): boolean {
   
   // Include permanently free games only if they're in new releases
   // This avoids showing old free-to-play games repeatedly
-  if (game.final_price === 0 && category === 'new_releases') {
+  if (game.final_price === 0 && category === CATEGORY_NEW_RELEASES) {
     return true;
   }
   
@@ -48,7 +63,7 @@ function isEligibleFreeGame(game: any, category: string): boolean {
 }
 
 // Helper function to get appropriate description for the game
-function getGameDescription(game: any): string {
+function getGameDescription(game: SteamGame): string {
   if (game.discount_percent === 100) {
     return 'Limited time free game on Steam';
   }
@@ -69,9 +84,9 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
 
     // Categories to check for free games
     const categoriesToCheck = [
-      'specials',      // Games on special offer (may include 100% discounts)
-      'new_releases',  // New releases (includes free-to-play games)
-      'top_sellers',   // Top sellers (may include free games)
+      CATEGORY_SPECIALS,      // Games on special offer (may include 100% discounts)
+      CATEGORY_NEW_RELEASES,  // New releases (includes free-to-play games)
+      CATEGORY_TOP_SELLERS,   // Top sellers (may include free games)
     ];
 
     for (const category of categoriesToCheck) {
