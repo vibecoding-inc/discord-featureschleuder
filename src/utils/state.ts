@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from './logger';
+import { SentGameEntry } from '../types';
 
 // State contains only mutable runtime data
 export interface GuildState {
@@ -11,7 +12,8 @@ export interface GuildState {
     gog: Date | null;
     amazonPrime: Date | null;
   };
-  sentGames: string[]; // Array of game IDs that have been sent
+  sentGames: string[]; // Array of game IDs that have been sent (deprecated, for backward compatibility)
+  sentGamesMap?: { [gameId: string]: SentGameEntry }; // Map of game IDs to their metadata
 }
 
 export interface GuildStates {
@@ -48,6 +50,30 @@ export class StateManager {
               state.lastChecked[service] = new Date(state.lastChecked[service] as any);
             }
           });
+          
+          // Convert sentGamesMap dates if it exists
+          if (state.sentGamesMap) {
+            Object.keys(state.sentGamesMap).forEach(gameId => {
+              const entry = state.sentGamesMap![gameId];
+              entry.lastSeen = new Date(entry.lastSeen);
+              entry.notifiedDate = new Date(entry.notifiedDate);
+              if (entry.endDate) {
+                entry.endDate = new Date(entry.endDate);
+              }
+            });
+          } else {
+            // Migrate old sentGames array to sentGamesMap
+            state.sentGamesMap = {};
+            if (state.sentGames && state.sentGames.length > 0) {
+              const now = new Date();
+              state.sentGames.forEach(gameId => {
+                state.sentGamesMap![gameId] = {
+                  lastSeen: now,
+                  notifiedDate: now,
+                };
+              });
+            }
+          }
         });
       }
     } catch (error) {
@@ -105,23 +131,105 @@ export class StateManager {
           amazonPrime: null,
         },
         sentGames: [],
+        sentGamesMap: {},
       };
       this.scheduleSave();
     }
     return this.states[guildId];
   }
 
-  addSentGame(guildId: string, gameId: string): void {
+  addSentGame(guildId: string, gameId: string, endDate?: Date): void {
     const state = this.getState(guildId);
-    if (!state.sentGames.includes(gameId)) {
-      state.sentGames.push(gameId);
-      this.scheduleSave();
+    
+    // Initialize sentGamesMap if it doesn't exist
+    if (!state.sentGamesMap) {
+      state.sentGamesMap = {};
     }
+    
+    const now = new Date();
+    
+    // Add or update the game entry
+    if (!state.sentGamesMap[gameId]) {
+      state.sentGamesMap[gameId] = {
+        lastSeen: now,
+        notifiedDate: now,
+        endDate,
+      };
+      
+      // Also add to legacy sentGames array for backward compatibility
+      if (!state.sentGames.includes(gameId)) {
+        state.sentGames.push(gameId);
+      }
+    } else {
+      // Update existing entry
+      state.sentGamesMap[gameId].lastSeen = now;
+      if (endDate) {
+        state.sentGamesMap[gameId].endDate = endDate;
+      }
+    }
+    
+    this.scheduleSave();
   }
 
   hasGameBeenSent(guildId: string, gameId: string): boolean {
     const state = this.getState(guildId);
+    
+    // Check sentGamesMap first (preferred)
+    if (state.sentGamesMap && state.sentGamesMap[gameId]) {
+      return true;
+    }
+    
+    // Fallback to legacy sentGames array
     return state.sentGames.includes(gameId);
+  }
+
+  updateGameLastSeen(guildId: string, gameId: string, endDate?: Date): void {
+    const state = this.getState(guildId);
+    
+    if (!state.sentGamesMap) {
+      state.sentGamesMap = {};
+    }
+    
+    if (state.sentGamesMap[gameId]) {
+      state.sentGamesMap[gameId].lastSeen = new Date();
+      if (endDate) {
+        state.sentGamesMap[gameId].endDate = endDate;
+      }
+      this.scheduleSave();
+    }
+  }
+
+  cleanupOldGames(guildId: string, cooldownHours: number = 24): number {
+    const state = this.getState(guildId);
+    
+    if (!state.sentGamesMap) {
+      return 0;
+    }
+    
+    const now = new Date();
+    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+    const gameIdsToRemove: string[] = [];
+    
+    Object.keys(state.sentGamesMap).forEach(gameId => {
+      const entry = state.sentGamesMap![gameId];
+      const timeSinceLastSeen = now.getTime() - entry.lastSeen.getTime();
+      
+      // Remove games that haven't been seen as free for longer than the cooldown period
+      if (timeSinceLastSeen > cooldownMs) {
+        gameIdsToRemove.push(gameId);
+        delete state.sentGamesMap![gameId];
+        logger.debug(`Removed game ${gameId} from state (not seen for ${Math.round(timeSinceLastSeen / (60 * 60 * 1000))} hours)`);
+      }
+    });
+    
+    // Batch cleanup of legacy array for efficiency
+    if (gameIdsToRemove.length > 0) {
+      const gameIdsSet = new Set(gameIdsToRemove);
+      state.sentGames = state.sentGames.filter(gameId => !gameIdsSet.has(gameId));
+      this.scheduleSave();
+    }
+    
+    return gameIdsToRemove.length;
   }
 
   updateLastChecked(guildId: string, service: keyof GuildState['lastChecked']): void {
