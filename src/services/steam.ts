@@ -55,11 +55,10 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
         const reviewData = reviewsResponse.data?.query_summary;
         if (reviewData && 
             reviewData.total_reviews > 0 && 
-            typeof reviewData.total_positive === 'number') {
-          // Calculate percentage of positive reviews and convert to 0-100 scale
-          const percentage = Math.round((reviewData.total_positive / reviewData.total_reviews) * 100);
+            typeof reviewData.review_score === 'number') {
+          // Use Steam's review_score (0-10 scale) and convert to 0-100 scale
           rating = {
-            score: percentage,
+            score: reviewData.review_score * 10,
             source: 'Steam',
           };
         }
@@ -77,14 +76,9 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
 
 // Helper function to determine if a game should be included
 function isEligibleFreeGame(game: SteamGame, category: string): boolean {
-  // Include games with 100% discount (temporary free promotions)
+  // Only include games with 100% discount (temporary free promotions)
+  // Exclude free-to-play games (final_price === 0 but discount_percent !== 100)
   if (game.discount_percent === 100) {
-    return true;
-  }
-  
-  // Include permanently free games only if they're in new releases
-  // This avoids showing old free-to-play games repeatedly
-  if (game.final_price === 0 && category === CATEGORY_NEW_RELEASES) {
     return true;
   }
   
@@ -93,15 +87,8 @@ function isEligibleFreeGame(game: SteamGame, category: string): boolean {
 
 // Helper function to get appropriate description for the game
 function getGameDescription(game: SteamGame): string {
-  if (game.discount_percent === 100) {
-    return 'Limited time free game on Steam';
-  }
-  
-  if (game.final_price === 0) {
-    return 'Free-to-play game on Steam';
-  }
-  
-  return 'Free game on Steam';
+  // All eligible games have 100% discount at this point
+  return 'Limited time free game on Steam';
 }
 
 export async function fetchSteamGames(): Promise<FreeGame[]> {
