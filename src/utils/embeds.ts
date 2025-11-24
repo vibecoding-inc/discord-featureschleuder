@@ -30,9 +30,21 @@ export function createGameEmbed(game: FreeGame): EmbedBuilder {
 
   // Add rating if available
   if (game.rating) {
-    const ratingDisplay = game.rating.source 
-      ? `${game.rating.score}/100 (${game.rating.source})`
-      : `${game.rating.score}/100`;
+    let ratingDisplay: string;
+    
+    // Format rating based on source
+    if (game.rating.source === 'Steam' || game.rating.source === 'GoG') {
+      // Show as percentage for user reviews
+      ratingDisplay = game.rating.source 
+        ? `${game.rating.score}% (${game.rating.source})`
+        : `${game.rating.score}%`;
+    } else {
+      // Show as score/100 for Metacritic and other critic scores
+      ratingDisplay = game.rating.source 
+        ? `${game.rating.score}/100 (${game.rating.source})`
+        : `${game.rating.score}/100`;
+    }
+    
     embed.addFields({ 
       name: '⭐ Rating', 
       value: ratingDisplay, 

@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 // Steam's featured games endpoint
 const STEAM_API_URL = 'https://store.steampowered.com/api/featured';
 const STEAM_DETAILS_API = 'https://store.steampowered.com/api/appdetails';
+const STEAM_REVIEWS_API = 'https://store.steampowered.com/appreviews';
 
 async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string } }> {
   try {
@@ -19,10 +20,36 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
     }
 
     const genres = gameData.genres?.map((g: { description: string }) => g.description).slice(0, 3) || [];
-    const rating = gameData.metacritic ? {
-      score: gameData.metacritic.score,
-      source: 'Metacritic',
-    } : undefined;
+    
+    // Prefer Metacritic score if available, otherwise use Steam user reviews
+    let rating: { score: number; source: string } | undefined;
+    
+    if (gameData.metacritic) {
+      rating = {
+        score: gameData.metacritic.score,
+        source: 'Metacritic',
+      };
+    } else {
+      // Try to fetch Steam user reviews
+      try {
+        const reviewsResponse = await axios.get(`${STEAM_REVIEWS_API}/${appId}`, {
+          params: { json: 1, filter: 'all', language: 'english' },
+          timeout: 5000,
+        });
+        
+        const reviewData = reviewsResponse.data?.query_summary;
+        if (reviewData && reviewData.total_reviews > 0) {
+          // Calculate percentage of positive reviews and convert to 0-100 scale
+          const percentage = Math.round((reviewData.total_positive / reviewData.total_reviews) * 100);
+          rating = {
+            score: percentage,
+            source: 'Steam',
+          };
+        }
+      } catch (reviewError) {
+        logger.debug(`Failed to fetch reviews for Steam app ${appId}:`, reviewError);
+      }
+    }
 
     return { genres, rating };
   } catch (error) {

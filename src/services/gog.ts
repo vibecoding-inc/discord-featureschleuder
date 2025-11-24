@@ -24,6 +24,12 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
         // Extract genres from genre string (e.g., "Action, Adventure")
         const genres = game.genre ? game.genre.split(',').map((g: string) => g.trim()).slice(0, 3) : undefined;
         
+        // GoG uses a 0-5 star rating system, convert to 0-100 scale for consistency
+        const rating = game.rating && game.rating > 0 ? {
+          score: Math.round(game.rating * 20), // Convert 0-5 to 0-100
+          source: 'GoG',
+        } : undefined;
+        
         games.push({
           title: game.title,
           description: game.genre || 'Free game on GoG',
@@ -32,6 +38,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           store: 'GoG',
           originalPrice: game.price?.baseAmount ? `$${game.price.baseAmount}` : undefined,
           genres,
+          rating,
         });
       }
     }
