@@ -45,7 +45,7 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
 
       // Check if the game is actually free (discountPrice = 0)
       const discountPrice = game.price?.totalPrice?.discountPrice;
-      if (discountPrice === undefined || discountPrice > 0) {
+      if (discountPrice === undefined || discountPrice !== 0) {
         continue;
       }
 
