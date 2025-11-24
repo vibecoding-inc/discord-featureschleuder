@@ -31,6 +31,35 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
   }
 }
 
+// Helper function to determine if a game should be included
+function isEligibleFreeGame(game: any, category: string): boolean {
+  // Include games with 100% discount (temporary free promotions)
+  if (game.discount_percent === 100) {
+    return true;
+  }
+  
+  // Include permanently free games only if they're in new releases
+  // This avoids showing old free-to-play games repeatedly
+  if (game.final_price === 0 && category === 'new_releases') {
+    return true;
+  }
+  
+  return false;
+}
+
+// Helper function to get appropriate description for the game
+function getGameDescription(game: any): string {
+  if (game.discount_percent === 100) {
+    return 'Limited time free game on Steam';
+  }
+  
+  if (game.final_price === 0) {
+    return 'Free-to-play game on Steam';
+  }
+  
+  return 'Free game on Steam';
+}
+
 export async function fetchSteamGames(): Promise<FreeGame[]> {
   try {
     // Check Steam's featured categories for free games
@@ -54,9 +83,8 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
           continue;
         }
 
-        // Check if game is currently free (discount of 100% or final price is 0)
-        // Only include games with 100% discount (temporary free) or games that are permanently free but newly released
-        if (game.discount_percent === 100 || (game.final_price === 0 && category === 'new_releases')) {
+        // Check if game is eligible based on pricing and category
+        if (isEligibleFreeGame(game, category)) {
           seenGameIds.add(game.id);
           
           // Fetch detailed information for the game
@@ -64,9 +92,7 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
           
           games.push({
             title: game.name,
-            description: game.discount_percent === 100 
-              ? 'Limited time free game on Steam' 
-              : 'Free-to-play game on Steam',
+            description: getGameDescription(game),
             imageUrl: game.header_image || game.large_capsule_image || '',
             url: `https://store.steampowered.com/app/${game.id}`,
             store: 'Steam',
