@@ -20,6 +20,13 @@ interface BasicGameData {
 }
 
 /**
+ * Builds a full Luna URL from a relative path.
+ */
+function buildLunaUrl(path: string): string {
+  return path.startsWith('http') ? path : `${AMAZON_DETAIL_BASE_URL}${path}`;
+}
+
+/**
  * Fetches free games from Amazon Prime Gaming using Puppeteer.
  * 
  * Implementation based on lootscraper approach:
@@ -83,25 +90,24 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
     const freeGames: FreeGame[] = [];
     
     for (const basicGame of basicGames) {
+      const finalUrl = buildLunaUrl(basicGame.url);
+      
       try {
-        // Build the full URL for the detail page (use luna.amazon.com for detail pages)
-        const detailUrl = basicGame.url.startsWith('http') 
-          ? basicGame.url 
-          : `${AMAZON_DETAIL_BASE_URL}${basicGame.url}`;
-        
-        logger.debug(`Fetching details for: ${basicGame.title} from ${detailUrl}`);
+        logger.debug(`Fetching details for: ${basicGame.title} from ${finalUrl}`);
         
         // Navigate to detail page
-        await page.goto(detailUrl, {
+        await page.goto(finalUrl, {
           waitUntil: 'networkidle2',
           timeout: 30000,
         });
         
         // Wait for content to load (wait for buy-box which contains the main info)
-        await page.waitForSelector('[data-a-target="buy-box"], [data-a-target="HeroContainer"]', {
+        // Log if selectors don't load but continue - the page may still have usable content
+        const selectorLoaded = await page.waitForSelector('[data-a-target="buy-box"], [data-a-target="HeroContainer"]', {
           timeout: 10000,
-        }).catch(() => {
-          logger.debug(`Detail page did not load expected selectors for: ${basicGame.title}`);
+        }).then(() => true).catch(() => {
+          logger.debug(`Detail page selectors timed out for: ${basicGame.title}, continuing with available content`);
+          return false;
         });
         
         // Extract detailed metadata from the detail page
@@ -114,17 +120,8 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
         }
         
         // Build description
-        let description: string;
-        if (details.description) {
-          description = details.description;
-        } else {
-          description = `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`;
-        }
-        
-        // Final URL for users - use luna.amazon.com format
-        const finalUrl = basicGame.url.startsWith('http') 
-          ? basicGame.url 
-          : `https://luna.amazon.com${basicGame.url}`;
+        const description = details.description 
+          || `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`;
         
         freeGames.push({
           title: basicGame.title,
@@ -144,10 +141,6 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
         logger.debug(`Error fetching details for ${basicGame.title}:`, e);
         
         // Still add the game with basic info if detail scraping fails
-        const finalUrl = basicGame.url.startsWith('http') 
-          ? basicGame.url 
-          : `https://luna.amazon.com${basicGame.url}`;
-        
         freeGames.push({
           title: basicGame.title,
           description: 'Free game available on Amazon Prime Gaming',
@@ -262,26 +255,57 @@ async function scrapeDetailPage(page: Page): Promise<DetailPageData> {
       result.endDateText = await page.evaluate(el => el.textContent?.trim(), availElem);
     }
     
-    // Extract genres and full description from page text
-    const pageText = await page.evaluate('document.body.innerText');
-    if (typeof pageText === 'string') {
-      // Extract genres from "Game genres" section
-      const genreMatch = pageText.match(/Game genres\n+([^\n]+)/);
+    // Extract genres - they appear after "Game genres" section
+    // We need to get this from page text as there's no specific selector
+    // Only extract relevant sections to minimize text processing
+    const genreSection = await page.evaluate(`
+      (function() {
+        const text = document.body.innerText;
+        const genreIndex = text.indexOf('Game genres');
+        if (genreIndex === -1) return null;
+        return text.substring(genreIndex, Math.min(genreIndex + 200, text.length));
+      })()
+    `);
+    
+    if (typeof genreSection === 'string') {
+      const genreMatch = genreSection.match(/Game genres\n+([^\n]+)/);
       if (genreMatch && genreMatch[1]) {
-        const genreList = genreMatch[1].split(',').map(g => g.trim()).filter(g => g.length > 0);
+        const genreList = genreMatch[1].split(',').map((g: string) => g.trim()).filter((g: string) => g.length > 0);
         result.genres = genreList.slice(0, MAX_GENRES);
       }
+    }
+    
+    // If no description from buy-box, try "About the game" section
+    if (!result.description) {
+      const aboutSection = await page.evaluate(`
+        (function() {
+          const text = document.body.innerText;
+          const aboutIndex = text.indexOf('About the game');
+          if (aboutIndex === -1) return null;
+          return text.substring(aboutIndex, Math.min(aboutIndex + 500, text.length));
+        })()
+      `);
       
-      // If no description from buy-box, try "About the game" section
-      if (!result.description) {
-        const aboutMatch = pageText.match(/About the game\n+([^\n]+)/);
+      if (typeof aboutSection === 'string') {
+        const aboutMatch = aboutSection.match(/About the game\n+([^\n]+)/);
         if (aboutMatch && aboutMatch[1]) {
           result.description = aboutMatch[1];
         }
       }
-      
-      // Try to find price/value information
-      const valueMatch = pageText.match(/Value:?\s*([\$€£][\d.,]+)/i);
+    }
+    
+    // Try to find price/value information (rarely present on Amazon Prime games)
+    const valueSection = await page.evaluate(`
+      (function() {
+        const text = document.body.innerText;
+        const valueIndex = text.toLowerCase().indexOf('value');
+        if (valueIndex === -1) return null;
+        return text.substring(valueIndex, Math.min(valueIndex + 50, text.length));
+      })()
+    `);
+    
+    if (typeof valueSection === 'string') {
+      const valueMatch = valueSection.match(/Value:?\s*([\$€£][\d.,]+)/i);
       if (valueMatch) {
         result.originalPrice = valueMatch[1];
       }
