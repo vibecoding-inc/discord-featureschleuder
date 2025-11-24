@@ -230,7 +230,7 @@ declare module 'discord.js' {
 5. Add color mapping in `src/utils/embeds.ts`
 
 ### Adding a New Command
-1. Create file in `src/commands/newcommmand.ts`
+1. Create file in `src/commands/newcommand.ts`
 2. Export `data` (SlashCommandBuilder) and `execute` function
 3. Build and run `npm run deploy-commands`
 4. Commands are auto-loaded from `src/commands/` directory
