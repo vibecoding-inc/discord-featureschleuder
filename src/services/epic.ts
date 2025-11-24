@@ -43,6 +43,12 @@ export async function fetchEpicGames(): Promise<FreeGame[]> {
         continue;
       }
 
+      // Check if the game is actually free (discountPrice = 0)
+      const discountPrice = game.price?.totalPrice?.discountPrice;
+      if (discountPrice === undefined || discountPrice > 0) {
+        continue;
+      }
+
       // Skip if it's not a game (DLC, etc.)
       if (game.offerType !== 'BASE_GAME' && game.offerType !== 'BUNDLE') {
         continue;
