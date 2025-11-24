@@ -3,10 +3,11 @@ FROM node:18-slim
 # Set working directory
 WORKDIR /app
 
-# Install dependencies required for Puppeteer/Chromium
+# Install dependencies required for Puppeteer/Chromium AND dumb-init
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-sandbox \
+    dumb-init \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -46,22 +47,33 @@ RUN npm run build
 
 # Copy entrypoint script
 COPY entrypoint.sh ./
-
-# Make entrypoint script executable
 RUN chmod +x entrypoint.sh
 
 # Remove dev dependencies and source files to reduce image size
 RUN npm prune --production
 RUN rm -rf src tsconfig.json
 
-# Create data directory for persistent storage
+# Create data directory
 RUN mkdir -p /app/data
 
-# Run as non-root user for security
-RUN groupadd -g 1001 nodejs
-RUN useradd -r -u 1001 -g nodejs nodejs
-RUN chown -R nodejs:nodejs /app
+# --- SECURITY & USER SETUP ---
+
+# Create group and user WITH a home directory
+RUN groupadd -g 1001 nodejs && \
+    useradd -r -u 1001 -g nodejs -m -d /home/nodejs nodejs
+
+# Set HOME environment variable (Crucial for Chromium Crashpad)
+ENV HOME=/home/nodejs
+
+# Ensure permissions are correct
+RUN chown -R nodejs:nodejs /app && \
+    chown -R nodejs:nodejs /home/nodejs
+
+# Switch to non-root user
 USER nodejs
 
-# Start the bot using entrypoint script
+# Use dumb-init as the entrypoint handler
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Start the bot
 CMD ["./entrypoint.sh"]
