@@ -1,12 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from './logger';
-
-export interface SentGameEntry {
-  lastSeen: Date; // When the game was last seen as free
-  endDate?: Date; // When the free period was supposed to end (if known)
-  notifiedDate: Date; // When we first notified about this game
-}
+import { SentGameEntry } from '../types';
 
 // State contains only mutable runtime data
 export interface GuildState {
@@ -213,7 +208,7 @@ export class StateManager {
     
     const now = new Date();
     const cooldownMs = cooldownHours * 60 * 60 * 1000;
-    let removedCount = 0;
+    const gameIdsToRemove: string[] = [];
     
     Object.keys(state.sentGamesMap).forEach(gameId => {
       const entry = state.sentGamesMap![gameId];
@@ -221,24 +216,20 @@ export class StateManager {
       
       // Remove games that haven't been seen as free for longer than the cooldown period
       if (timeSinceLastSeen > cooldownMs) {
+        gameIdsToRemove.push(gameId);
         delete state.sentGamesMap![gameId];
-        
-        // Also remove from legacy array
-        const index = state.sentGames.indexOf(gameId);
-        if (index > -1) {
-          state.sentGames.splice(index, 1);
-        }
-        
-        removedCount++;
         logger.debug(`Removed game ${gameId} from state (not seen for ${Math.round(timeSinceLastSeen / (60 * 60 * 1000))} hours)`);
       }
     });
     
-    if (removedCount > 0) {
+    // Batch cleanup of legacy array for efficiency
+    if (gameIdsToRemove.length > 0) {
+      const gameIdsSet = new Set(gameIdsToRemove);
+      state.sentGames = state.sentGames.filter(gameId => !gameIdsSet.has(gameId));
       this.scheduleSave();
     }
     
-    return removedCount;
+    return gameIdsToRemove.length;
   }
 
   updateLastChecked(guildId: string, service: keyof GuildState['lastChecked']): void {
