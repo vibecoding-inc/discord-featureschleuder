@@ -22,7 +22,7 @@ interface SteamGame {
   large_capsule_image?: string;
 }
 
-async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string } }> {
+async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string }; description?: string }> {
   try {
     const response = await axios.get(STEAM_DETAILS_API, {
       params: { appids: appId },
@@ -35,6 +35,7 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
     }
 
     const genres = gameData.genres?.map((g: { description: string }) => g.description).slice(0, 3) || [];
+    const description = gameData.short_description || undefined;
     
     // Prefer Metacritic score if available, otherwise use Steam user reviews
     let rating: { score: number; source: string } | undefined;
@@ -67,7 +68,7 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
       }
     }
 
-    return { genres, rating };
+    return { genres, rating, description };
   } catch (error) {
     logger.debug(`Failed to fetch details for Steam app ${appId}:`, error);
     return {};
@@ -86,9 +87,9 @@ function isEligibleFreeGame(game: SteamGame, category: string): boolean {
 }
 
 // Helper function to get appropriate description for the game
-function getGameDescription(game: SteamGame): string {
-  // All eligible games have 100% discount at this point
-  return 'Limited time free game on Steam';
+function getGameDescription(game: SteamGame, shortDescription?: string): string {
+  // Use the game's short description if available, otherwise fall back to generic text
+  return shortDescription || 'Limited time free game on Steam';
 }
 
 export async function fetchSteamGames(): Promise<FreeGame[]> {
@@ -123,7 +124,7 @@ export async function fetchSteamGames(): Promise<FreeGame[]> {
           
           games.push({
             title: game.name,
-            description: getGameDescription(game),
+            description: getGameDescription(game, details.description),
             imageUrl: game.header_image || game.large_capsule_image || '',
             url: `https://store.steampowered.com/app/${game.id}`,
             store: 'Steam',
