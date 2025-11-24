@@ -11,6 +11,9 @@ interface ScrapedGameData {
   imageUrl: string;
   url: string;
   endDateText: string | null;
+  description: string | null;
+  genres: string[];
+  originalPrice: string | null;
 }
 
 /**
@@ -119,11 +122,42 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
         const dateElem = await card.$('.availability-date span:nth-child(2)');
         const endDateText = dateElem ? await page.evaluate((el) => el.textContent?.trim(), dateElem) : null;
         
+        // Extract description/subtitle if available
+        const descElem = await card.$('.item-card-details__body__secondary');
+        const description = descElem ? await page.evaluate((el) => el.textContent?.trim(), descElem) : null;
+        
+        // Extract genres from the card (may be in tags or categories)
+        const genres: string[] = [];
+        const genreElems = await card.$$('.item-card-details__tags span, .item-card__genre, [data-a-target="item-card-genre"]');
+        for (const genreElem of genreElems) {
+          const genre = await page.evaluate((el) => el.textContent?.trim(), genreElem);
+          if (genre && genre.length > 0 && !genres.includes(genre)) {
+            genres.push(genre);
+          }
+        }
+        
+        // Extract original price if displayed (sometimes shown as "Value: $X.XX" or strikethrough price)
+        let originalPrice: string | null = null;
+        const priceElem = await card.$('.item-card-details__price, [data-a-target="item-card-price"], .original-price');
+        if (priceElem) {
+          const priceText = await page.evaluate((el) => el.textContent?.trim(), priceElem);
+          if (priceText) {
+            // Extract price value from text like "Value: $29.99" or "$29.99"
+            const priceMatch = priceText.match(/\$[\d.,]+/);
+            if (priceMatch) {
+              originalPrice = priceMatch[0];
+            }
+          }
+        }
+        
         games.push({
           title,
           imageUrl: imageUrl || '',
           url: url || '',
           endDateText: endDateText || null,
+          description,
+          genres: genres.slice(0, 3), // Limit to 3 genres
+          originalPrice,
         });
       } catch (e) {
         // Skip this card if parsing fails
@@ -147,13 +181,23 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
         endDate = parseAmazonDate(game.endDateText);
       }
       
+      // Build description - use scraped description if available, otherwise generate one
+      let description: string;
+      if (game.description) {
+        description = game.description;
+      } else {
+        description = `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`;
+      }
+      
       freeGames.push({
         title: game.title,
-        description: `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`,
+        description,
         imageUrl: game.imageUrl,
         url,
         store: 'Amazon Prime Gaming',
         endDate,
+        originalPrice: game.originalPrice || undefined,
+        genres: game.genres.length > 0 ? game.genres : undefined,
       });
     }
     
@@ -211,7 +255,12 @@ export function createManualAmazonGame(
   title: string,
   description: string,
   imageUrl: string,
-  url: string
+  url: string,
+  options?: {
+    endDate?: Date;
+    originalPrice?: string;
+    genres?: string[];
+  }
 ): FreeGame {
   return {
     title,
@@ -219,5 +268,8 @@ export function createManualAmazonGame(
     imageUrl,
     url,
     store: 'Amazon Prime Gaming',
+    endDate: options?.endDate,
+    originalPrice: options?.originalPrice,
+    genres: options?.genres,
   };
 }
