@@ -11,6 +11,8 @@ interface ScrapedGameData {
   imageUrl: string;
   url: string;
   endDateText: string | null;
+  subtitle: string | null; // Secondary text/description from the card
+  publisher: string | null; // Publisher name if available
 }
 
 /**
@@ -119,11 +121,21 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
         const dateElem = await card.$('.availability-date span:nth-child(2)');
         const endDateText = dateElem ? await page.evaluate((el) => el.textContent?.trim(), dateElem) : null;
         
+        // Extract subtitle/secondary text (often contains game type or short description)
+        const subtitleElem = await card.$('.item-card-details__body__secondary p');
+        const subtitle = subtitleElem ? await page.evaluate((el) => el.textContent?.trim(), subtitleElem) : null;
+        
+        // Extract publisher if available (from tertiary text)
+        const publisherElem = await card.$('.item-card-details__body__tertiary p');
+        const publisher = publisherElem ? await page.evaluate((el) => el.textContent?.trim(), publisherElem) : null;
+        
         games.push({
           title,
           imageUrl: imageUrl || '',
           url: url || '',
           endDateText: endDateText || null,
+          subtitle: subtitle || null,
+          publisher: publisher || null,
         });
       } catch (e) {
         // Skip this card if parsing fails
@@ -147,9 +159,12 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
         endDate = parseAmazonDate(game.endDateText);
       }
       
+      // Build a richer description using available metadata
+      const description = buildGameDescription(game, endDate);
+      
       freeGames.push({
         title: game.title,
-        description: `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`,
+        description,
         imageUrl: game.imageUrl,
         url,
         store: 'Amazon Prime Gaming',
@@ -204,6 +219,36 @@ function parseAmazonDate(dateStr: string): Date | undefined {
     logger.debug(`Failed to parse date: ${dateStr}`);
     return undefined;
   }
+}
+
+/**
+ * Builds a rich description for an Amazon Prime game using available metadata.
+ * Prioritizes subtitle content if available, then adds publisher info.
+ */
+function buildGameDescription(game: ScrapedGameData, endDate?: Date): string {
+  const parts: string[] = [];
+  
+  // Use subtitle as primary description if available (often contains game genre/type)
+  if (game.subtitle) {
+    parts.push(game.subtitle);
+  }
+  
+  // Add publisher info if available
+  if (game.publisher) {
+    parts.push(`By ${game.publisher}`);
+  }
+  
+  // If we have content from the page, use it
+  if (parts.length > 0) {
+    return parts.join(' • ');
+  }
+  
+  // Fallback to generic description with end date
+  if (endDate) {
+    return `Free game available on Amazon Prime Gaming until ${endDate.toLocaleDateString()}`;
+  }
+  
+  return 'Free game available on Amazon Prime Gaming';
 }
 
 // Helper function to manually add Amazon Prime games if needed
