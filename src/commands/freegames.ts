@@ -72,6 +72,12 @@ export const data = new SlashCommandBuilder()
     subcommand
       .setName('list')
       .setDescription('List all current free games without posting them')
+      .addBooleanOption(option =>
+        option
+          .setName('public')
+          .setDescription('Make the response visible to everyone (default: only visible to you)')
+          .setRequired(false)
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -199,7 +205,8 @@ async function handleCheckSubcommand(interaction: ChatInputCommandInteraction, g
 }
 
 async function handleListSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
-  await interaction.deferReply({ ephemeral: true });
+  const isPublic = interaction.options.getBoolean('public') ?? false;
+  await interaction.deferReply({ ephemeral: !isPublic });
   
   // Import dynamically to avoid circular dependencies
   const { getAllCurrentGames } = await import('../services/gameChecker');
@@ -242,7 +249,7 @@ async function handleListSubcommand(interaction: ChatInputCommandInteraction, gu
         // Subsequent messages - send as follow-ups
         await interaction.followUp({
           embeds: batch,
-          ephemeral: true,
+          ephemeral: !isPublic,
         });
       }
       
