@@ -118,7 +118,7 @@ The bot stores configuration per server in `data/config.json`. Each server can h
 - **Epic Games**: Uses the official Epic Games Store API
 - **Steam**: Limited due to lack of official free games API
 - **GoG**: Uses GoG's AJAX API
-- **Amazon Prime Gaming**: No public API available (currently returns empty, would need web scraping or third-party service)
+- **Amazon Prime Gaming**: Uses Puppeteer headless browser to scrape games from gaming.amazon.com. Implementation based on [lootscraper](https://github.com/eikowagenknecht/lootscraper) approach. Successfully extracts game data including titles, URLs, images, and end dates from the rendered page.
 
 ## 🔧 Development
 
@@ -155,6 +155,8 @@ npm run deploy-commands # Deploy slash commands
 ```
 
 ## 🐳 Docker Deployment
+
+The Docker image includes all necessary dependencies for Puppeteer (used for Amazon Prime Gaming scraping), including Chromium and required system libraries.
 
 ### Using Docker Compose
 
