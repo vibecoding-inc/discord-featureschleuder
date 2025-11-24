@@ -1,10 +1,17 @@
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer';
 import { FreeGame } from '../types';
 import { logger } from '../utils/logger';
 
 // Amazon Prime Gaming endpoints
 // Based on https://github.com/eikowagenknecht/lootscraper/tree/main/src/services/scraper/implementations/amazon
 const AMAZON_OFFERS_URL = 'https://gaming.amazon.com/home';
+
+interface ScrapedGameData {
+  title: string;
+  imageUrl: string;
+  url: string;
+  endDateText: string | null;
+}
 
 /**
  * Fetches free games from Amazon Prime Gaming using Puppeteer.
@@ -21,7 +28,7 @@ const AMAZON_OFFERS_URL = 'https://gaming.amazon.com/home';
  * for free game offers.
  */
 export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
-  let browser;
+  let browser: Browser | undefined;
   try {
     logger.debug('Fetching Amazon Prime Gaming games with Puppeteer');
     
@@ -77,7 +84,7 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
  * Scrapes games from the Amazon Gaming page using Puppeteer.
  * Follows the lootscraper approach for extracting offer data.
  */
-async function scrapeGamesFromPage(page: any): Promise<FreeGame[]> {
+async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
   try {
     // Extract game offers from the page
     // Use page.$$ to query the DOM from Node.js side
@@ -91,32 +98,32 @@ async function scrapeGamesFromPage(page: any): Promise<FreeGame[]> {
     // Find all game card links
     const gameCards = await page.$$('[data-a-target="offer-list-FGWP_FULL"] .item-card__action > a:first-child');
     
-    const games: any[] = [];
+    const games: ScrapedGameData[] = [];
     
     for (const card of gameCards) {
       try {
         // Extract title
         const titleElem = await card.$('.item-card-details__body__primary h3');
-        const title = titleElem ? await page.evaluate((el: any) => el.textContent?.trim(), titleElem) : null;
+        const title = titleElem ? await page.evaluate((el) => el.textContent?.trim(), titleElem) : null;
         
         if (!title) continue;
         
         // Extract image
         const imgElem = await card.$('[data-a-target="card-image"] img');
-        const imageUrl = imgElem ? await page.evaluate((el: any) => el.getAttribute('src'), imgElem) : '';
+        const imageUrl = imgElem ? await page.evaluate((el) => el.getAttribute('src'), imgElem) : '';
         
         // Extract URL
-        const url = await page.evaluate((el: any) => el.getAttribute('href'), card);
+        const url = await page.evaluate((el) => el.getAttribute('href'), card);
         
         // Extract end date if available
         const dateElem = await card.$('.availability-date span:nth-child(2)');
-        const endDateText = dateElem ? await page.evaluate((el: any) => el.textContent?.trim(), dateElem) : null;
+        const endDateText = dateElem ? await page.evaluate((el) => el.textContent?.trim(), dateElem) : null;
         
         games.push({
           title,
           imageUrl: imageUrl || '',
           url: url || '',
-          endDateText,
+          endDateText: endDateText || null,
         });
       } catch (e) {
         // Skip this card if parsing fails
@@ -128,6 +135,9 @@ async function scrapeGamesFromPage(page: any): Promise<FreeGame[]> {
     const freeGames: FreeGame[] = [];
     
     for (const game of games) {
+      // URLs from Amazon Gaming are relative paths starting with /claims/
+      // Use gaming.amazon.com as the base - it's the canonical domain for Prime Gaming claims
+      // Note: Both gaming.amazon.com and luna.amazon.com work, but gaming.amazon.com is preferred
       const url = game.url.startsWith('http') 
         ? game.url 
         : `https://gaming.amazon.com${game.url}`;
