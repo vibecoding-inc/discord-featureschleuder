@@ -90,19 +90,29 @@ async function scrapeAmazonOffers(): Promise<FreeGame[]> {
           // Amazon sometimes embeds initial state in the HTML
           try {
             // Check for window.__INITIAL_STATE__ or similar patterns
-            const initialStateMatch = scriptContent.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/);
+            // Use a more robust approach: find the assignment and extract until the statement end
+            const initialStateMatch = scriptContent.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);
             if (initialStateMatch) {
-              const state = JSON.parse(initialStateMatch[1]);
-              const extracted = extractGamesFromState(state);
-              games.push(...extracted);
+              try {
+                const state = JSON.parse(initialStateMatch[1]);
+                const extracted = extractGamesFromState(state);
+                games.push(...extracted);
+              } catch (parseError) {
+                // JSON parse failed, likely incomplete match - skip
+              }
             }
 
             // Check for other common patterns
-            const dataMatch = scriptContent.match(/"offers":\s*(\[.+?\])/);
+            // Look for offers property in object context
+            const dataMatch = scriptContent.match(/"offers"\s*:\s*(\[[^\]]*\])/);
             if (dataMatch) {
-              const offers = JSON.parse(dataMatch[1]);
-              const extracted = extractGamesFromOffers(offers);
-              games.push(...extracted);
+              try {
+                const offers = JSON.parse(dataMatch[1]);
+                const extracted = extractGamesFromOffers(offers);
+                games.push(...extracted);
+              } catch (parseError) {
+                // JSON parse failed - skip
+              }
             }
           } catch (e) {
             // Continue searching other scripts
