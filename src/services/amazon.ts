@@ -136,11 +136,10 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
     
     for (const game of games) {
       // URLs from Amazon Gaming are relative paths starting with /claims/
-      // Use gaming.amazon.com as the base - it's the canonical domain for Prime Gaming claims
-      // Note: Both gaming.amazon.com and luna.amazon.com work, but gaming.amazon.com is preferred
+      // Use luna.amazon.com as the base domain - this is the working URL format
       const url = game.url.startsWith('http') 
         ? game.url 
-        : `https://gaming.amazon.com${game.url}`;
+        : `https://luna.amazon.com${game.url}`;
       
       // Parse end date if available
       let endDate: Date | undefined;
