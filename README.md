@@ -156,6 +156,8 @@ npm run deploy-commands # Deploy slash commands
 
 ## 🐳 Docker Deployment
 
+The Docker image includes all necessary dependencies for Puppeteer (used for Amazon Prime Gaming scraping), including Chromium and required system libraries.
+
 ### Using Docker Compose
 
 The easiest way to run the bot with Docker:
