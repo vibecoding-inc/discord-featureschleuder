@@ -38,7 +38,9 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
         });
         
         const reviewData = reviewsResponse.data?.query_summary;
-        if (reviewData && reviewData.total_reviews > 0) {
+        if (reviewData && 
+            reviewData.total_reviews > 0 && 
+            typeof reviewData.total_positive === 'number') {
           // Calculate percentage of positive reviews and convert to 0-100 scale
           const percentage = Math.round((reviewData.total_positive / reviewData.total_reviews) * 100);
           rating = {
