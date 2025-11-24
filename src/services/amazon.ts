@@ -5,18 +5,18 @@ import { logger } from '../utils/logger';
 // Amazon Prime Gaming endpoints
 // Based on https://github.com/eikowagenknecht/lootscraper/tree/main/src/services/scraper/implementations/amazon
 const AMAZON_OFFERS_URL = 'https://gaming.amazon.com/home';
+// Detail pages work on luna.amazon.com, not gaming.amazon.com
+const AMAZON_DETAIL_BASE_URL = 'https://luna.amazon.com';
 
 // Maximum number of genres to extract and display
 const MAX_GENRES = 3;
 
-interface ScrapedGameData {
+// Delay between page navigations to avoid rate limiting (in ms)
+const PAGE_NAV_DELAY = 1000;
+
+interface BasicGameData {
   title: string;
-  imageUrl: string;
   url: string;
-  endDateText: string | null;
-  description: string | null;
-  genres: string[];
-  originalPrice: string | null;
 }
 
 /**
@@ -28,7 +28,8 @@ interface ScrapedGameData {
  * Uses Puppeteer to:
  * 1. Load the Amazon Gaming page with JavaScript execution
  * 2. Wait for the offers to load
- * 3. Extract game data from the rendered DOM
+ * 3. Extract basic game data from the main page
+ * 4. Visit each game's detail page to extract additional metadata
  * 
  * The page uses selector: [data-a-target="offer-list-FGWP_FULL"]
  * for free game offers.
@@ -70,11 +71,95 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
       return [];
     }
 
-    // Extract games from the page
-    const games = await scrapeGamesFromPage(page);
+    // Step 1: Extract basic game info from the main listing page
+    const basicGames = await scrapeBasicGameData(page);
+    logger.debug(`Found ${basicGames.length} games on main page`);
     
-    logger.info(`Found ${games.length} Amazon Prime Gaming games`);
-    return games;
+    if (basicGames.length === 0) {
+      return [];
+    }
+
+    // Step 2: Visit each game's detail page to get additional metadata
+    const freeGames: FreeGame[] = [];
+    
+    for (const basicGame of basicGames) {
+      try {
+        // Build the full URL for the detail page (use luna.amazon.com for detail pages)
+        const detailUrl = basicGame.url.startsWith('http') 
+          ? basicGame.url 
+          : `${AMAZON_DETAIL_BASE_URL}${basicGame.url}`;
+        
+        logger.debug(`Fetching details for: ${basicGame.title} from ${detailUrl}`);
+        
+        // Navigate to detail page
+        await page.goto(detailUrl, {
+          waitUntil: 'networkidle2',
+          timeout: 30000,
+        });
+        
+        // Wait for content to load (wait for buy-box which contains the main info)
+        await page.waitForSelector('[data-a-target="buy-box"], [data-a-target="HeroContainer"]', {
+          timeout: 10000,
+        }).catch(() => {
+          logger.debug(`Detail page did not load expected selectors for: ${basicGame.title}`);
+        });
+        
+        // Extract detailed metadata from the detail page
+        const details = await scrapeDetailPage(page);
+        
+        // Parse end date from detail page availability text
+        let endDate: Date | undefined;
+        if (details.endDateText) {
+          endDate = parseAmazonAvailability(details.endDateText);
+        }
+        
+        // Build description
+        let description: string;
+        if (details.description) {
+          description = details.description;
+        } else {
+          description = `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`;
+        }
+        
+        // Final URL for users - use luna.amazon.com format
+        const finalUrl = basicGame.url.startsWith('http') 
+          ? basicGame.url 
+          : `https://luna.amazon.com${basicGame.url}`;
+        
+        freeGames.push({
+          title: basicGame.title,
+          description,
+          imageUrl: details.imageUrl || '',
+          url: finalUrl,
+          store: 'Amazon Prime Gaming',
+          endDate,
+          originalPrice: details.originalPrice || undefined,
+          genres: details.genres.length > 0 ? details.genres : undefined,
+        });
+        
+        // Add delay between page navigations to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, PAGE_NAV_DELAY));
+        
+      } catch (e) {
+        logger.debug(`Error fetching details for ${basicGame.title}:`, e);
+        
+        // Still add the game with basic info if detail scraping fails
+        const finalUrl = basicGame.url.startsWith('http') 
+          ? basicGame.url 
+          : `https://luna.amazon.com${basicGame.url}`;
+        
+        freeGames.push({
+          title: basicGame.title,
+          description: 'Free game available on Amazon Prime Gaming',
+          imageUrl: '',
+          url: finalUrl,
+          store: 'Amazon Prime Gaming',
+        });
+      }
+    }
+    
+    logger.info(`Found ${freeGames.length} Amazon Prime Gaming games`);
+    return freeGames;
     
   } catch (error) {
     logger.error('Error fetching Amazon Prime Gaming games:', error);
@@ -87,13 +172,11 @@ export async function fetchAmazonPrimeGames(): Promise<FreeGame[]> {
 }
 
 /**
- * Scrapes games from the Amazon Gaming page using Puppeteer.
- * Follows the lootscraper approach for extracting offer data.
+ * Scrapes basic game information from the main Amazon Gaming page.
+ * This extracts title and URL from the game cards.
  */
-async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
+async function scrapeBasicGameData(page: Page): Promise<BasicGameData[]> {
   try {
-    // Extract game offers from the page
-    // Use page.$$ to query the DOM from Node.js side
     const offerListExists = await page.$('[data-a-target="offer-list-FGWP_FULL"]');
     
     if (!offerListExists) {
@@ -104,111 +187,143 @@ async function scrapeGamesFromPage(page: Page): Promise<FreeGame[]> {
     // Find all game card links
     const gameCards = await page.$$('[data-a-target="offer-list-FGWP_FULL"] .item-card__action > a:first-child');
     
-    const games: ScrapedGameData[] = [];
+    const games: BasicGameData[] = [];
     
     for (const card of gameCards) {
       try {
         // Extract title
         const titleElem = await card.$('.item-card-details__body__primary h3');
-        const title = titleElem ? await page.evaluate((el) => el.textContent?.trim(), titleElem) : null;
+        const title = titleElem ? await page.evaluate(el => el.textContent?.trim(), titleElem) : null;
         
         if (!title) continue;
         
-        // Extract image
-        const imgElem = await card.$('[data-a-target="card-image"] img');
-        const imageUrl = imgElem ? await page.evaluate((el) => el.getAttribute('src'), imgElem) : '';
-        
         // Extract URL
-        const url = await page.evaluate((el) => el.getAttribute('href'), card);
+        const url = await page.evaluate(el => el.getAttribute('href'), card);
         
-        // Extract end date if available
-        const dateElem = await card.$('.availability-date span:nth-child(2)');
-        const endDateText = dateElem ? await page.evaluate((el) => el.textContent?.trim(), dateElem) : null;
-        
-        // Extract description/subtitle if available
-        const descElem = await card.$('.item-card-details__body__secondary');
-        const description = descElem ? await page.evaluate((el) => el.textContent?.trim(), descElem) : null;
-        
-        // Extract genres from the card (may be in tags or categories)
-        const genres: string[] = [];
-        const genreElems = await card.$$('.item-card-details__tags span, .item-card__genre, [data-a-target="item-card-genre"]');
-        for (const genreElem of genreElems) {
-          const genre = await page.evaluate((el) => el.textContent?.trim(), genreElem);
-          if (genre && genre.length > 0 && !genres.includes(genre)) {
-            genres.push(genre);
-          }
-        }
-        
-        // Extract original price if displayed (sometimes shown as "Value: $X.XX" or strikethrough price)
-        let originalPrice: string | null = null;
-        const priceElem = await card.$('.item-card-details__price, [data-a-target="item-card-price"], .original-price');
-        if (priceElem) {
-          const priceText = await page.evaluate((el) => el.textContent?.trim(), priceElem);
-          if (priceText) {
-            // Extract price value from text like "Value: $29.99" or "$29.99"
-            const priceMatch = priceText.match(/\$[\d.,]+/);
-            if (priceMatch) {
-              originalPrice = priceMatch[0];
-            }
-          }
-        }
+        if (!url) continue;
         
         games.push({
           title,
-          imageUrl: imageUrl || '',
-          url: url || '',
-          endDateText: endDateText || null,
-          description,
-          genres: genres.slice(0, MAX_GENRES),
-          originalPrice,
+          url,
         });
       } catch (e) {
-        // Skip this card if parsing fails
         logger.debug('Error parsing game card:', e);
       }
     }
-
-    // Convert to FreeGame format
-    const freeGames: FreeGame[] = [];
     
-    for (const game of games) {
-      // URLs from Amazon Gaming are relative paths starting with /claims/
-      // Use luna.amazon.com as the base domain - this is the working URL format
-      const url = game.url.startsWith('http') 
-        ? game.url 
-        : `https://luna.amazon.com${game.url}`;
-      
-      // Parse end date if available
-      let endDate: Date | undefined;
-      if (game.endDateText) {
-        endDate = parseAmazonDate(game.endDateText);
-      }
-      
-      // Build description - use scraped description if available, otherwise generate one
-      let description: string;
-      if (game.description) {
-        description = game.description;
-      } else {
-        description = `Free game available on Amazon Prime Gaming${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}`;
-      }
-      
-      freeGames.push({
-        title: game.title,
-        description,
-        imageUrl: game.imageUrl,
-        url,
-        store: 'Amazon Prime Gaming',
-        endDate,
-        originalPrice: game.originalPrice || undefined,
-        genres: game.genres.length > 0 ? game.genres : undefined,
-      });
-    }
-    
-    return freeGames;
+    return games;
     
   } catch (error) {
-    logger.error('Error scraping games from page:', error);
+    logger.error('Error scraping basic game data:', error);
     return [];
+  }
+}
+
+/**
+ * Data extracted from a game's detail page.
+ */
+interface DetailPageData {
+  description: string | null;
+  genres: string[];
+  originalPrice: string | null;
+  imageUrl: string | null;
+  endDateText: string | null;
+}
+
+/**
+ * Scrapes detailed metadata from a game's detail page.
+ * This includes description, genres, image URL, and availability dates.
+ */
+async function scrapeDetailPage(page: Page): Promise<DetailPageData> {
+  const result: DetailPageData = {
+    description: null,
+    genres: [],
+    originalPrice: null,
+    imageUrl: null,
+    endDateText: null,
+  };
+  
+  try {
+    // Extract hero image from the detail page
+    const imgElem = await page.$('[data-a-target="HeroContainer"] img, [data-a-target="responsive-media-image"] img');
+    if (imgElem) {
+      result.imageUrl = await page.evaluate(el => el.getAttribute('src'), imgElem);
+    }
+    
+    // Extract description from buy-box
+    const descElem = await page.$('[data-a-target="buy-box_description"]');
+    if (descElem) {
+      result.description = await page.evaluate(el => el.textContent?.trim(), descElem);
+    }
+    
+    // Extract availability/end date text
+    const availElem = await page.$('[data-a-target="buy-box_ac-text"], [data-a-target="buy-box_availability-callout"]');
+    if (availElem) {
+      result.endDateText = await page.evaluate(el => el.textContent?.trim(), availElem);
+    }
+    
+    // Extract genres and full description from page text
+    const pageText = await page.evaluate('document.body.innerText');
+    if (typeof pageText === 'string') {
+      // Extract genres from "Game genres" section
+      const genreMatch = pageText.match(/Game genres\n+([^\n]+)/);
+      if (genreMatch && genreMatch[1]) {
+        const genreList = genreMatch[1].split(',').map(g => g.trim()).filter(g => g.length > 0);
+        result.genres = genreList.slice(0, MAX_GENRES);
+      }
+      
+      // If no description from buy-box, try "About the game" section
+      if (!result.description) {
+        const aboutMatch = pageText.match(/About the game\n+([^\n]+)/);
+        if (aboutMatch && aboutMatch[1]) {
+          result.description = aboutMatch[1];
+        }
+      }
+      
+      // Try to find price/value information
+      const valueMatch = pageText.match(/Value:?\s*([\$€£][\d.,]+)/i);
+      if (valueMatch) {
+        result.originalPrice = valueMatch[1];
+      }
+    }
+    
+  } catch (error) {
+    logger.debug('Error scraping detail page:', error);
+  }
+  
+  return result;
+}
+
+/**
+ * Parses Amazon's availability text format
+ * Example: "Available through Dec 24, 2025 (in 30 days)"
+ */
+function parseAmazonAvailability(availText: string): Date | undefined {
+  try {
+    // Try to extract date from "Available through MMM D, YYYY" format
+    const dateMatch = availText.match(/through\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i);
+    if (dateMatch && dateMatch[1]) {
+      const date = new Date(dateMatch[1]);
+      if (!isNaN(date.getTime())) {
+        // Set to end of day
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+      }
+    }
+    
+    // Fallback: try to extract "in X days" and calculate date
+    const daysMatch = availText.match(/in\s+(\d+)\s+days?/i);
+    if (daysMatch && daysMatch[1]) {
+      const days = parseInt(daysMatch[1], 10);
+      const now = new Date();
+      const futureDate = new Date(now);
+      futureDate.setDate(futureDate.getDate() + days);
+      return new Date(futureDate.getFullYear(), futureDate.getMonth(), futureDate.getDate(), 23, 59, 59);
+    }
+    
+    return undefined;
+  } catch (error) {
+    logger.debug(`Failed to parse availability text: ${availText}`);
+    return undefined;
   }
 }
 
