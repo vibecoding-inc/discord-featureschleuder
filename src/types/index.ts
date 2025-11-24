@@ -14,6 +14,12 @@ export interface FreeGame {
   };
 }
 
+export interface SentGameEntry {
+  lastSeen: Date; // When the game was last seen as free
+  endDate?: Date; // When the free period was supposed to end (if known)
+  notifiedDate: Date; // When we first notified about this game
+}
+
 export interface BotConfig {
   guildId: string;
   channelId: string | null;
@@ -29,7 +35,8 @@ export interface BotConfig {
     gog: Date | null;
     amazonPrime: Date | null;
   };
-  sentGames: string[]; // Array of game IDs that have been sent
+  sentGames: string[]; // Array of game IDs that have been sent (deprecated, use sentGamesMap)
+  sentGamesMap?: { [gameId: string]: SentGameEntry }; // Map of game IDs to their metadata
 }
 
 export interface GuildConfigs {

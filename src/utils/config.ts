@@ -80,12 +80,20 @@ export class ConfigManager {
     logger.warn(`toggleService called but services are now configured via ENABLE_* environment variables`);
   }
 
-  addSentGame(guildId: string, gameId: string): void {
-    stateManager.addSentGame(guildId, gameId);
+  addSentGame(guildId: string, gameId: string, endDate?: Date): void {
+    stateManager.addSentGame(guildId, gameId, endDate);
   }
 
   hasGameBeenSent(guildId: string, gameId: string): boolean {
     return stateManager.hasGameBeenSent(guildId, gameId);
+  }
+
+  updateGameLastSeen(guildId: string, gameId: string, endDate?: Date): void {
+    stateManager.updateGameLastSeen(guildId, gameId, endDate);
+  }
+
+  cleanupOldGames(guildId: string, cooldownHours?: number): number {
+    return stateManager.cleanupOldGames(guildId, cooldownHours);
   }
 
   updateLastChecked(guildId: string, service: keyof BotConfig['lastChecked']): void {

@@ -43,7 +43,7 @@ export async function checkAndPostGames(client: Client, guildId: string): Promis
 
         // Mark game as sent
         const gameId = generateGameId(game);
-        configManager.addSentGame(guildId, gameId);
+        configManager.addSentGame(guildId, gameId, game.endDate);
         totalPosted++;
 
         // Add a small delay between messages to avoid rate limiting

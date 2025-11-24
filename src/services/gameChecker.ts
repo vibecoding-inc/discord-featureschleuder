@@ -15,6 +15,12 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
   const config = configManager.getConfig(guildId);
   const results: GameFetchResult[] = [];
 
+  // Clean up games that haven't been free for more than 24 hours
+  const removedCount = configManager.cleanupOldGames(guildId, 24);
+  if (removedCount > 0) {
+    logger.info(`Cleaned up ${removedCount} old game(s) for guild ${guildId}`);
+  }
+
   // Map service names to their fetcher functions
   const serviceFetchers: Record<keyof BotConfig['enabledServices'], () => Promise<FreeGame[]>> = {
     epic: fetchEpicGames,
@@ -23,12 +29,22 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
     amazonPrime: fetchAmazonPrimeGames,
   };
 
+  // Track all currently free games to update their lastSeen timestamps
+  const currentlyFreeGames: Map<string, Date | undefined> = new Map();
+
   // Iterate over all services with type-safe iteration
   for (const key of Object.keys(serviceFetchers) as Array<keyof BotConfig['enabledServices']>) {
     if (config.enabledServices[key]) {
       try {
         const fetcher = serviceFetchers[key];
         const games = await fetcher();
+        
+        // Track currently free games
+        games.forEach(game => {
+          const gameId = generateGameId(game);
+          currentlyFreeGames.set(gameId, game.endDate);
+        });
+        
         const newGames = games.filter(game => !configManager.hasGameBeenSent(guildId, generateGameId(game)));
         
         if (newGames.length > 0) {
@@ -40,6 +56,13 @@ export async function checkAllGames(guildId: string): Promise<GameFetchResult[]>
       }
     }
   }
+
+  // Update lastSeen for games that are still free
+  currentlyFreeGames.forEach((endDate, gameId) => {
+    if (configManager.hasGameBeenSent(guildId, gameId)) {
+      configManager.updateGameLastSeen(guildId, gameId, endDate);
+    }
+  });
 
   return results;
 }
