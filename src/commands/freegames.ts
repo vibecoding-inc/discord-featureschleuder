@@ -67,6 +67,11 @@ export const data = new SlashCommandBuilder()
     subcommand
       .setName('check')
       .setDescription('Manually check for free games now')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('list')
+      .setDescription('List all current free games without posting them')
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -96,6 +101,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       break;
     case 'check':
       await handleCheckSubcommand(interaction, guildId);
+      break;
+    case 'list':
+      await handleListSubcommand(interaction, guildId);
       break;
   }
 }
@@ -186,6 +194,69 @@ async function handleCheckSubcommand(interaction: ChatInputCommandInteraction, g
     console.error('Error checking for games:', error);
     await interaction.editReply({
       embeds: [createErrorEmbed('An error occurred while checking for games.')],
+    });
+  }
+}
+
+async function handleListSubcommand(interaction: ChatInputCommandInteraction, guildId: string) {
+  await interaction.deferReply({ ephemeral: true });
+  
+  // Import dynamically to avoid circular dependencies
+  const { getAllCurrentGames } = await import('../services/gameChecker');
+  const { createGameEmbed } = await import('../utils/embeds');
+  
+  try {
+    const results = await getAllCurrentGames(guildId);
+    
+    if (results.length === 0) {
+      await interaction.editReply({
+        embeds: [createSuccessEmbed('No free games found at this time.')],
+      });
+      return;
+    }
+    
+    let totalGames = 0;
+    const embeds = [];
+    
+    for (const result of results) {
+      for (const game of result.games) {
+        embeds.push(createGameEmbed(game));
+        totalGames++;
+      }
+    }
+    
+    // Discord has a limit of 10 embeds per message, so we need to send multiple messages if needed
+    const maxEmbedsPerMessage = 10;
+    let messageCount = 0;
+    
+    for (let i = 0; i < embeds.length; i += maxEmbedsPerMessage) {
+      const batch = embeds.slice(i, i + maxEmbedsPerMessage);
+      
+      if (messageCount === 0) {
+        // First message - edit the deferred reply
+        await interaction.editReply({
+          content: `🎮 **Found ${totalGames} free game(s):**`,
+          embeds: batch,
+        });
+      } else {
+        // Subsequent messages - send as follow-ups
+        await interaction.followUp({
+          embeds: batch,
+          ephemeral: true,
+        });
+      }
+      
+      messageCount++;
+      
+      // Add a small delay between message batches to avoid rate limiting
+      if (i + maxEmbedsPerMessage < embeds.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+  } catch (error) {
+    console.error('Error listing games:', error);
+    await interaction.editReply({
+      embeds: [createErrorEmbed('An error occurred while listing games.')],
     });
   }
 }

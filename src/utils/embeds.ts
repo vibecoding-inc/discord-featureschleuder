@@ -19,6 +19,27 @@ export function createGameEmbed(game: FreeGame): EmbedBuilder {
     embed.addFields({ name: '💰 Original Price', value: game.originalPrice, inline: true });
   }
 
+  // Add genres/tags if available
+  if (game.genres && game.genres.length > 0) {
+    embed.addFields({ 
+      name: '🎯 Genres', 
+      value: game.genres.join(', '), 
+      inline: true 
+    });
+  }
+
+  // Add rating if available
+  if (game.rating) {
+    const ratingDisplay = game.rating.source 
+      ? `${game.rating.score}/100 (${game.rating.source})`
+      : `${game.rating.score}/100`;
+    embed.addFields({ 
+      name: '⭐ Rating', 
+      value: ratingDisplay, 
+      inline: true 
+    });
+  }
+
   if (game.endDate) {
     // Use Discord timestamp formatting for better user experience (shows in user's local timezone)
     const timestamp = Math.floor(game.endDate.getTime() / 1000);
