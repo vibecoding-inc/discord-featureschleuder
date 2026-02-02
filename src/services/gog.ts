@@ -52,17 +52,15 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
     }
 
     const games = await page.evaluate((): ScrapedGame[] => {
-      // @ts-ignore - We're in a browser context, DOM types are available
+      // @ts-expect-error - We're in a browser context, DOM types are available at runtime
       const gameElements = Array.from(document.querySelectorAll('a[href*="/game/"], a[href*="/en/game/"]'));
       const seenTitles = new Set<string>();
       const results: ScrapedGame[] = [];
 
       for (const element of gameElements) {
         try {
-          // @ts-ignore - Browser context
-          const linkElement = element;
-          // @ts-ignore - Browser context
-          const url = linkElement.href;
+          // @ts-expect-error - Browser context
+          const url = element.href;
           
           // Skip non-game links (e.g., DLC, demos)
           if (!url.includes('/game/') && !url.includes('/en/game/')) continue;
@@ -71,7 +69,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           let title = '';
           
           // Method 1: Check for title in various class names
-          // @ts-ignore - Browser context
+          // @ts-expect-error - Browser context
           const titleElement = element.querySelector('h3, [class*="product-title"], [class*="ProductTitle"], [data-selenium="title"]');
           if (titleElement?.textContent) {
             title = titleElement.textContent.trim();
@@ -79,7 +77,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           
           // Method 2: Try getting title from image alt text if not found
           if (!title) {
-            // @ts-ignore - Browser context
+            // @ts-expect-error - Browser context
             const imgElement = element.querySelector('img');
             if (imgElement?.alt) {
               title = imgElement.alt.trim();
@@ -105,7 +103,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           
           // Skip demos, DLC, and bonus content based on title
           const lowerTitle = title.toLowerCase();
-          if (lowerTitle.includes('demo') && !lowerTitle.includes('demo version') || 
+          if ((lowerTitle.includes('demo') && !lowerTitle.includes('demo version')) || 
               lowerTitle.includes('dlc') || 
               lowerTitle.includes('bonus content') ||
               lowerTitle.includes('artbook') ||
@@ -117,10 +115,9 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           
           // Extract image URL with better handling
           let imageUrl = '';
-          // @ts-ignore - Browser context
+          // @ts-expect-error - Browser context
           const imgElement = element.querySelector('img, picture img');
           if (imgElement) {
-            // @ts-ignore - Browser context
             // Try multiple sources for the image
             imageUrl = imgElement.src || 
                       imgElement.currentSrc ||
@@ -131,7 +128,6 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
             
             // Handle lazy-loaded images (data: protocol)
             if (imageUrl.startsWith('data:image')) {
-              // @ts-ignore - Browser context
               imageUrl = imgElement.dataset?.src || 
                         imgElement.dataset?.lazySrc ||
                         imgElement.getAttribute('data-src') || 
@@ -149,7 +145,7 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
           }
           
           // Extract description/genre if available
-          // @ts-ignore - Browser context
+          // @ts-expect-error - Browser context
           const descElement = element.querySelector('[class*="genre"], [class*="Genre"], [class*="description"], [class*="Description"]');
           const description = descElement?.textContent?.trim() || 'Free game on GoG';
           
