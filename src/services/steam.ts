@@ -2,24 +2,16 @@ import axios from 'axios';
 import { FreeGame } from '../types';
 import { logger } from '../utils/logger';
 
-// Steam's featured games endpoint
-const STEAM_API_URL = 'https://store.steampowered.com/api/featuredcategories';
+// Steam search endpoint that returns JSON with HTML results
+const STEAM_SEARCH_URL = 'https://store.steampowered.com/search/results/';
 const STEAM_DETAILS_API = 'https://store.steampowered.com/api/appdetails';
 const STEAM_REVIEWS_API = 'https://store.steampowered.com/appreviews';
 
-// Category constants
-const CATEGORY_SPECIALS = 'specials';
-const CATEGORY_NEW_RELEASES = 'new_releases';
-const CATEGORY_TOP_SELLERS = 'top_sellers';
-
-interface SteamGame {
-  id: number;
-  name: string;
-  discount_percent: number;
-  original_price: number | null;
-  final_price: number;
-  header_image?: string;
-  large_capsule_image?: string;
+interface ParsedSearchResult {
+  appId: number;
+  title: string;
+  originalPrice: string;
+  imageUrl: string;
 }
 
 async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rating?: { score: number; source: string }; description?: string }> {
@@ -75,67 +67,98 @@ async function fetchGameDetails(appId: number): Promise<{ genres?: string[]; rat
   }
 }
 
-// Helper function to determine if a game should be included
-function isEligibleFreeGame(game: SteamGame, category: string): boolean {
-  // Only include games with 100% discount (temporary free promotions)
-  // Exclude free-to-play games (final_price === 0 but discount_percent !== 100)
-  if (game.discount_percent === 100) {
-    return true;
-  }
-  
-  return false;
-}
+/**
+ * Parse the HTML returned by Steam's search endpoint to extract game data.
+ * Each result is an <a> tag with data attributes and nested elements.
+ */
+function parseSearchResults(html: string): ParsedSearchResult[] {
+  const results: ParsedSearchResult[] = [];
 
-// Helper function to get appropriate description for the game
-function getGameDescription(game: SteamGame, shortDescription?: string): string {
-  // Use the game's short description if available, otherwise fall back to generic text
-  return shortDescription || 'Limited time free game on Steam';
+  // Match each search result row
+  const rowRegex = /<a\b[^>]*data-ds-appid="(\d+)"[^>]*>[\s\S]*?<\/a>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = rowRegex.exec(html)) !== null) {
+    const appId = parseInt(match[1], 10);
+    const rowHtml = match[0];
+
+    // Extract title
+    const titleMatch = rowHtml.match(/<span class="title">([^<]+)<\/span>/);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+    if (!title) continue;
+
+    // Extract original price
+    const priceMatch = rowHtml.match(/<div class="discount_original_price">([^<]+)<\/div>/);
+    const originalPrice = priceMatch ? priceMatch[1].trim() : '';
+
+    // Extract capsule image from the search result
+    const imgMatch = rowHtml.match(/<img\s+src="([^"]+)"/);
+    const capsuleImg = imgMatch ? imgMatch[1] : '';
+
+    // Use the header image (higher quality) based on app ID
+    const imageUrl = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`;
+
+    results.push({ appId, title, originalPrice, imageUrl });
+  }
+
+  return results;
 }
 
 export async function fetchSteamGames(): Promise<FreeGame[]> {
   try {
-    // Check Steam's featured categories for free games
-    const response = await axios.get(STEAM_API_URL);
+    // Use Steam's search API to find games that are currently 100% off.
+    // The combination of maxprice=free and specials=1 filters for temporarily
+    // free games (not permanently free-to-play titles).
+    const response = await axios.get(STEAM_SEARCH_URL, {
+      params: {
+        query: '',
+        start: 0,
+        count: 50,
+        maxprice: 'free',
+        specials: 1,
+        cc: 'us',
+        l: 'english',
+        infinite: 1,
+      },
+      timeout: 10000,
+    });
+
+    const data = response.data;
+    if (!data || !data.success) {
+      logger.warn('Steam search API returned unsuccessful response');
+      return [];
+    }
+
+    const html: string = data.results_html || '';
+    const totalCount: number = data.total_count || 0;
+
+    logger.debug(`Steam search found ${totalCount} free game(s) on sale`);
+
+    if (totalCount === 0 || !html.trim()) {
+      return [];
+    }
+
+    const searchResults = parseSearchResults(html);
     const games: FreeGame[] = [];
-    const seenGameIds = new Set<number>();
 
-    // Categories to check for free games
-    const categoriesToCheck = [
-      CATEGORY_SPECIALS,      // Games on special offer (may include 100% discounts)
-      CATEGORY_NEW_RELEASES,  // New releases (includes free-to-play games)
-      CATEGORY_TOP_SELLERS,   // Top sellers (may include free games)
-    ];
+    for (const result of searchResults) {
+      // Fetch detailed information for the game
+      const details = await fetchGameDetails(result.appId);
 
-    for (const category of categoriesToCheck) {
-      const categoryGames = response.data?.[category]?.items || [];
-      
-      for (const game of categoryGames) {
-        // Skip if we've already seen this game
-        if (seenGameIds.has(game.id)) {
-          continue;
-        }
+      games.push({
+        title: result.title,
+        description: details.description || 'Limited time free game on Steam',
+        imageUrl: result.imageUrl,
+        url: `https://store.steampowered.com/app/${result.appId}`,
+        store: 'Steam',
+        originalPrice: result.originalPrice || undefined,
+        genres: details.genres,
+        rating: details.rating,
+      });
 
-        // Check if game is eligible based on pricing and category
-        if (isEligibleFreeGame(game, category)) {
-          seenGameIds.add(game.id);
-          
-          // Fetch detailed information for the game
-          const details = await fetchGameDetails(game.id);
-          
-          games.push({
-            title: game.name,
-            description: getGameDescription(game, details.description),
-            imageUrl: game.header_image || game.large_capsule_image || '',
-            url: `https://store.steampowered.com/app/${game.id}`,
-            store: 'Steam',
-            originalPrice: game.original_price ? `$${(game.original_price / 100).toFixed(2)}` : undefined,
-            genres: details.genres,
-            rating: details.rating,
-          });
-          
-          // Add small delay to avoid rate limiting when fetching multiple game details
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
+      // Add small delay to avoid rate limiting when fetching multiple game details
+      if (searchResults.length > 1) {
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
