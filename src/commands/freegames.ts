@@ -26,6 +26,9 @@ function readReleaseTag(): string {
   return 'dev';
 }
 
+// Cache the tag once at startup since it never changes during the process lifetime
+const cachedReleaseTag = readReleaseTag();
+
 export const data = new SlashCommandBuilder()
   .setName('freegames')
   .setDescription('Manage free games notifications')
@@ -180,7 +183,7 @@ Amazon Prime: ${config.lastChecked.amazonPrime ? new Date(config.lastChecked.ama
   
   const embed = createSuccessEmbed(statusText)
     .setTitle('🎮 Free Games Bot Configuration')
-    .setAuthor({ name: `Version ${readReleaseTag()}` });
+    .setAuthor({ name: `Version ${cachedReleaseTag}` });
   
   await interaction.reply({
     embeds: [embed],
