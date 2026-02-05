@@ -4,9 +4,30 @@ import {
   PermissionFlagsBits,
   ChannelType 
 } from 'discord.js';
+import * as fs from 'fs';
+import * as path from 'path';
 import { configManager } from '../utils/config';
 import { createSuccessEmbed, createErrorEmbed } from '../utils/embeds';
 import { BotConfig } from '../types';
+
+function readReleaseTag(): string {
+  const candidates = [
+    path.resolve(__dirname, '..', '..', 'RELEASE_TAG'),
+    path.resolve(__dirname, '..', 'RELEASE_TAG'),
+  ];
+  for (const filePath of candidates) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8').trim();
+      if (content.length > 0) return content;
+    } catch {
+      // file not present in this location, try next
+    }
+  }
+  return 'dev';
+}
+
+// Cache the tag once at startup since it never changes during the process lifetime
+const cachedReleaseTag = readReleaseTag();
 
 export const data = new SlashCommandBuilder()
   .setName('freegames')
@@ -161,7 +182,8 @@ Amazon Prime: ${config.lastChecked.amazonPrime ? new Date(config.lastChecked.ama
   `.trim();
   
   const embed = createSuccessEmbed(statusText)
-    .setTitle('🎮 Free Games Bot Configuration');
+    .setTitle('🎮 Free Games Bot Configuration')
+    .setAuthor({ name: `Version ${cachedReleaseTag}` });
   
   await interaction.reply({
     embeds: [embed],
