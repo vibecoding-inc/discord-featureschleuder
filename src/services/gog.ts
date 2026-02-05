@@ -2,12 +2,12 @@ import puppeteer from 'puppeteer';
 import { FreeGame } from '../types';
 import { logger } from '../utils/logger';
 
-const GOG_FREE_GAMES_URL = 'https://www.gog.com/en/games?priceRange=0,0&page=1';
+const GOG_GIVEAWAY_URL = 'https://www.gog.com/en/giveaway';
 
 export async function fetchGoGGames(): Promise<FreeGame[]> {
   let browser;
   try {
-    logger.debug('Launching Puppeteer to scrape GOG free games...');
+    logger.debug('Launching Puppeteer to scrape GOG giveaways...');
     
     browser = await puppeteer.launch({
       headless: true,
@@ -30,111 +30,90 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
     // Set viewport
     await page.setViewport({ width: 1920, height: 1080 });
     
-    logger.debug(`Navigating to ${GOG_FREE_GAMES_URL}...`);
+    logger.debug(`Navigating to ${GOG_GIVEAWAY_URL}...`);
     
-    // Navigate to the page and wait for network to be idle
-    await page.goto(GOG_FREE_GAMES_URL, {
+    // Navigate to the giveaway page
+    await page.goto(GOG_GIVEAWAY_URL, {
       waitUntil: 'networkidle2',
       timeout: 30000,
     });
 
-    // Wait for the product grid to load
-    await page.waitForSelector('a[href*="/game/"], a[href*="/en/game/"]', { timeout: 10000 }).catch(() => {
-      logger.warn('Product grid selector not found, continuing anyway...');
-    });
-
-    // Extract game data from the page
+    // Check if there's an active giveaway
     interface ScrapedGame {
       title: string;
       description: string;
       imageUrl: string;
       url: string;
+      isActive: boolean;
     }
 
     const games = await page.evaluate((): ScrapedGame[] => {
-      // @ts-expect-error - We're in a browser context, DOM types are available at runtime
-      const gameElements = Array.from(document.querySelectorAll('a[href*="/game/"], a[href*="/en/game/"]'));
-      const seenTitles = new Set<string>();
       const results: ScrapedGame[] = [];
-
-      for (const element of gameElements) {
+      
+      // Look for giveaway banner or card
+      // @ts-expect-error - Browser context
+      const giveawayElements = Array.from(document.querySelectorAll('[class*="giveaway"], [class*="banner"], [class*="promo"]'));
+      
+      for (const element of giveawayElements) {
         try {
+          // Check if giveaway is active (not expired)
           // @ts-expect-error - Browser context
-          const url = element.href;
+          const text = element.textContent?.toLowerCase() || '';
+          if (text.includes('expired') || text.includes('ended') || text.includes('no active')) {
+            continue;
+          }
           
-          // Skip non-game links (e.g., DLC, demos)
-          if (!url.includes('/game/') && !url.includes('/en/game/')) continue;
+          // Look for game link within the element
+          // @ts-expect-error - Browser context
+          const linkElement = element.querySelector('a[href*="/game/"]');
+          if (!linkElement) continue;
           
-          // Extract title - try multiple methods
+          const url = linkElement.href;
+          if (!url.includes('/game/')) continue;
+          
+          // Extract title
           let title = '';
-          
-          // Method 1: Check for title in various class names
           // @ts-expect-error - Browser context
-          const titleElement = element.querySelector('h3, [class*="product-title"], [class*="ProductTitle"], [data-selenium="title"]');
-          if (titleElement?.textContent) {
-            title = titleElement.textContent.trim();
+          const titleElement = element.querySelector('h1, h2, h3, h4, [class*="title"], [class*="Title"]');
+          if (titleElement) {
+            title = titleElement.textContent?.trim() || '';
           }
           
-          // Method 2: Try getting title from image alt text if not found
+          // Try link text if no title found
+          if (!title && linkElement.textContent) {
+            title = linkElement.textContent.trim();
+          }
+          
+          // Try to extract from URL as last resort
           if (!title) {
-            // @ts-expect-error - Browser context
-            const imgElement = element.querySelector('img');
-            if (imgElement?.alt) {
-              title = imgElement.alt.trim();
-            }
-          }
-          
-          // Method 3: Try to extract from URL as last resort
-          if (!title && url) {
             const urlParts = url.split('/');
             const gameSlug = urlParts[urlParts.length - 1] || '';
             title = gameSlug.replace(/_/g, ' ').replace(/-/g, ' ');
           }
           
-          // Clean up the title
+          // Clean up title
           title = title.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-          
-          // Remove common suffixes and prefixes
-          title = title.replace(/^(MOD|DLC|DEMO)\s+/i, '').trim();
           title = title.replace(/\s*-?\s*(cover art image|banner image|image)$/i, '').trim();
           
-          // Skip if no title found or if we've already seen this title
-          if (!title || seenTitles.has(title.toLowerCase())) continue;
+          if (!title) continue;
           
-          // Skip demos, DLC, and bonus content based on title
-          const lowerTitle = title.toLowerCase();
-          if ((lowerTitle.includes('demo') && !lowerTitle.includes('demo version')) || 
-              lowerTitle.includes('dlc') || 
-              lowerTitle.includes('bonus content') ||
-              lowerTitle.includes('artbook') ||
-              lowerTitle.includes('soundtrack')) {
-            continue;
-          }
-          
-          seenTitles.add(title.toLowerCase());
-          
-          // Extract image URL with better handling
+          // Extract image
           let imageUrl = '';
           // @ts-expect-error - Browser context
           const imgElement = element.querySelector('img, picture img');
           if (imgElement) {
-            // Try multiple sources for the image
             imageUrl = imgElement.src || 
                       imgElement.currentSrc ||
                       imgElement.dataset?.src || 
-                      imgElement.dataset?.lazySrc ||
                       imgElement.getAttribute('data-src') || 
                       '';
             
-            // Handle lazy-loaded images (data: protocol)
             if (imageUrl.startsWith('data:image')) {
               imageUrl = imgElement.dataset?.src || 
-                        imgElement.dataset?.lazySrc ||
                         imgElement.getAttribute('data-src') || 
                         '';
             }
             
-            // Make sure we have a full URL
             if (imageUrl && !imageUrl.startsWith('http')) {
               if (imageUrl.startsWith('//')) {
                 imageUrl = 'https:' + imageUrl;
@@ -144,29 +123,92 @@ export async function fetchGoGGames(): Promise<FreeGame[]> {
             }
           }
           
-          // Extract description/genre if available
-          // @ts-expect-error - Browser context
-          const descElement = element.querySelector('[class*="genre"], [class*="Genre"], [class*="description"], [class*="Description"]');
-          const description = descElement?.textContent?.trim() || 'Free game on GoG';
-          
           results.push({
             title,
-            description,
+            description: 'Limited-time free giveaway on GoG',
             imageUrl,
             url,
+            isActive: true,
           });
           
-          // Limit to 10 games
-          if (results.length >= 10) break;
         } catch (error) {
-          console.error('Error parsing game element:', error);
+          console.error('Error parsing giveaway element:', error);
+        }
+      }
+      
+      // If no giveaway elements found, check for direct game links on the page
+      if (results.length === 0) {
+        // @ts-expect-error - Browser context
+        const pageText = document.body.textContent?.toLowerCase() || '';
+        
+        // Only proceed if there's indication of an active giveaway
+        if (pageText.includes('claim') || pageText.includes('free') || pageText.includes('giveaway')) {
+          // Look for prominent game links (usually h1/h2 with game link)
+          // @ts-expect-error - Browser context
+          const gameLinks = Array.from(document.querySelectorAll('a[href*="/game/"]'));
+          
+          for (const link of gameLinks.slice(0, 3)) { // Check first 3 links
+            // @ts-expect-error - Browser context
+            const url = link.href;
+            if (!url.includes('/game/')) continue;
+            
+            // Get title from link or nearby heading
+            // @ts-expect-error - Browser context
+            let title = link.textContent?.trim() || '';
+            
+            if (!title || title.length < 3) {
+              // Try to find nearby heading
+              // @ts-expect-error - Browser context
+              const parent = link.closest('[class*="card"], [class*="banner"], [class*="promo"]');
+              if (parent) {
+                const heading = parent.querySelector('h1, h2, h3, h4');
+                if (heading) {
+                  title = heading.textContent?.trim() || '';
+                }
+              }
+            }
+            
+            if (!title) {
+              const urlParts = url.split('/');
+              const gameSlug = urlParts[urlParts.length - 1] || '';
+              title = gameSlug.replace(/_/g, ' ').replace(/-/g, ' ');
+            }
+            
+            title = title.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+            title = title.replace(/\s*-?\s*(cover art image|banner image|image)$/i, '').trim();
+            
+            if (title.length < 3) continue;
+            
+            // Get image from link
+            let imageUrl = '';
+            // @ts-expect-error - Browser context
+            const img = link.querySelector('img');
+            if (img) {
+              imageUrl = img.src || img.dataset?.src || img.getAttribute('data-src') || '';
+              if (imageUrl && !imageUrl.startsWith('http')) {
+                if (imageUrl.startsWith('//')) {
+                  imageUrl = 'https:' + imageUrl;
+                } else if (imageUrl.startsWith('/')) {
+                  imageUrl = 'https://www.gog.com' + imageUrl;
+                }
+              }
+            }
+            
+            results.push({
+              title,
+              description: 'Limited-time free giveaway on GoG',
+              imageUrl,
+              url,
+              isActive: true,
+            });
+          }
         }
       }
 
       return results;
     });
 
-    logger.debug(`Scraped ${games.length} games from GOG`);
+    logger.debug(`Found ${games.length} active giveaway(s) on GOG`);
 
     // Transform scraped data to FreeGame format
     const freeGames: FreeGame[] = games.map(game => ({
