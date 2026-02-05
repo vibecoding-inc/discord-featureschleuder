@@ -45,8 +45,9 @@ COPY src ./src
 # Build the application
 RUN npm run build
 
-# Copy entrypoint script
+# Copy entrypoint script and release tag marker (if present)
 COPY entrypoint.sh ./
+COPY RELEASE_TAG* ./
 RUN chmod +x entrypoint.sh
 
 # Remove dev dependencies and source files to reduce image size
