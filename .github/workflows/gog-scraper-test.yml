@@ -1,0 +1,108 @@
+name: GOG Scraper Test
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/services/gog.ts'
+      - 'tests/gog-scraper.test.js'
+      - '.github/workflows/gog-scraper-test.yml'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  test-gog-scraper:
+    name: Test GOG Scraper
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write # Needed to comment on PRs
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build TypeScript
+      run: npm run build
+    
+    - name: Run GOG Scraper Test
+      id: test
+      run: |
+        echo "Running GOG scraper test..."
+        npm run test:gog > test-output.txt 2>&1
+        TEST_EXIT_CODE=$?
+        
+        echo "Test exit code: $TEST_EXIT_CODE"
+        
+        # Save the output for the comment
+        cat test-output.txt
+        
+        # Create a formatted output for the PR comment
+        {
+          echo "## GOG Scraper Test Results"
+          echo ""
+          echo "**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo ""
+          echo '```'
+          cat test-output.txt
+          echo '```'
+          echo ""
+          if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "✅ **Status:** Test passed successfully"
+          else
+            echo "❌ **Status:** Test failed"
+          fi
+          echo ""
+          echo "---"
+          echo "*This test runs the GOG scraper against the live GOG website to verify it works correctly.*"
+          echo "*Manual review is recommended to confirm the listed games are actually free on GOG.*"
+        } > pr-comment.md
+        
+        exit $TEST_EXIT_CODE
+    
+    - name: Comment PR with test results
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const commentBody = fs.readFileSync('pr-comment.md', 'utf8');
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('GOG Scraper Test Results')
+          );
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }

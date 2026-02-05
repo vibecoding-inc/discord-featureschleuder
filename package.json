@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "deploy-commands": "tsc && node dist/deploy-commands.js"
+    "deploy-commands": "tsc && node dist/deploy-commands.js",
+    "test:gog": "npm run build && node tests/gog-scraper.test.js",
+    "test:scrapers": "npm run build && node tests/all-scrapers.test.js"
   },
   "keywords": [
     "discord",
